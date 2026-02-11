@@ -2,65 +2,82 @@
 
 > *"You just read. The interface reads you back."*
 
-COSMOS transforms online discussions from flat, endless scrolls into **spatial, navigable 3D experiences** — where AI understands both the conversation and how you read it.
-
 ---
 
-## The Problem
+## The Vision
 
-- **800+ comment threads are unreadable.** Reddit, HN, Twitter — every discussion is a wall of text. The shape of a conversation is invisible.
-- **Your input is impoverished.** Reading is rich — your eyes linger, your brow furrows, you lean in — but the interface only knows what you click.
-- **Echo chambers are structural.** Platforms feed you what you already believe. Dissent gets buried. Nuance dies.
+Online discussions are broken. 800-comment Reddit threads are walls of text. Twitter is outrage loops. The shape of a conversation — who agrees, who disagrees, what's assumed but never said — is completely invisible.
 
----
-
-## What COSMOS Does
+**COSMOS makes the invisible visible.** It transforms community discussions into spatial, navigable 3D constellations where AI reveals the structure of human argument.
 
 Every post gets analyzed by Claude for **stance, emotion, hidden assumptions, and logical ancestry**. Then it gets placed in 3D space — clustered by ideology, colored by emotion, connected by argument structure.
 
-You explore the constellation by swiping cards. Agree, disagree, flip perspective, go deeper. The interface watches your eyes and face to understand what you *feel*, not just what you click.
-
-**Agree with something? The strongest counterargument appears next.** Not to argue — to illuminate.
-
 ---
 
-## How It Works
+## What's Built
+
+### The Full AI Pipeline
+
+A multi-agent orchestration system powered by Claude that processes any community topic end-to-end:
 
 ```
-Community Discussion
+Community Topic (e.g. "SF Richmond")
         ↓
-   Claude AI Pipeline
-   (analyze · cluster · position · connect)
+   Generator Agent ─── synthesizes realistic community discussion
         ↓
-   3D Constellation
-        ↕
-   You explore it
-   swipe · gaze · orbit
+   Cartographer Agent ─── analyzes each post: stance, emotion,
+                          assumptions, logical chains
+        ↓
+   Architect Agent ─── computes spatial layout: 3D positions,
+                       clusters, edge relationships
+        ↓
+   3D Constellation ── explore it live
 ```
 
-Three modes, one fluid experience:
+| Agent | What It Does | Status |
+|-------|-------------|--------|
+| **Generator** | Synthesizes diverse community voices around a topic — not scraping, *creating* realistic discourse | Working |
+| **Cartographer** | Analyzes stance (−1 to +1), emotion, hidden assumptions, argument ancestry for every post | Working |
+| **Architect** | Computes 3D layout — cluster positions, intra/inter-cluster spacing, edge weights | Working |
+| **Narrator** | AI guide that answers questions about the discussion in context | Built |
+| **Classifier** | Real-time stance/topic classification for user-submitted posts | Built |
 
-**READ** — Swipeable argument cards. Right = agree. Left = disagree. Up = flip to the opposing perspective. Down = trace the logical ancestry.
+The pipeline runs via SSE streaming — the UI shows live progress as each agent completes its work.
 
-**MAP** — 3D constellation. Posts are stars. Clusters are galaxies. Edges are gravitational relationships between arguments.
+### 3D Constellation View (MAP Mode)
 
-**PERCEIVE** — Webcam gaze + face tracking. The interface detects where your eyes fixate, when your brow furrows, when you nod involuntarily. Gaze enhances — it never gates.
+The core visual experience. Each post is a 3D card floating in space:
 
----
+- **PostCloud** — renders all posts as interactive 3D elements with stance-based coloring
+- **EdgeNetwork** — animated lines showing argument relationships between posts
+- **ClusterShells** — translucent spheres grouping ideologically similar posts
+- **AmbientDust** — particle field giving depth and atmosphere
+- **PostCard3D** — interactive card that expands on click to show full analysis: stance, emotion, assumptions, argument chain
+- **UserMarker** — tracks camera/user position in the constellation
 
-## AI Architecture
+All rendered in `@react-three/fiber` with orbit controls and camera fly animations.
 
-COSMOS runs a **multi-agent orchestration** powered by Claude:
+### Perception Layer (PERCEIVE Mode)
 
-| Agent | Role |
-|-------|------|
-| **Cartographer** | Analyzes each post — stance, emotion, assumptions, logical chains |
-| **Architect** | Computes spatial layout — clusters, positions, relationships |
-| **Narrator** | AI guide that answers questions about the discussion in context |
-| **Classifier** | Real-time classification of user-submitted posts |
-| **Generator** | Synthesizes discussion content from community topics |
+Built but not yet integrated into the main experience flow:
 
-The **anti-echo-chamber engine** rewires what you see next based on how you swipe:
+- **WebGazer.js** gaze tracking — detects where your eyes fixate on screen
+- **MediaPipe FaceMesh** — reads facial micro-expressions (brow furrow, nod, lean)
+- **Fusion Layer** — combines mouse + gaze + face signals into a unified intent stream
+- **Adaptive Model** — adjusts UI behavior based on fused perception signals
+- **Gaze-Card Feedback** — maps gaze zones to card interaction cues
+
+The perception hooks (`useGazeTracking`, `useFusedInput`, `useAdaptiveModel`, `useGazeCardFeedback`) are complete. The consent flow (`CameraConsent`) and calibration screen (`CalibrationScreen`) exist. Integration into the main experience is the next step.
+
+### Card System (READ Mode)
+
+Built as standalone components, pending integration:
+
+- **SwipeableCard** — gesture-driven card with spring physics (right = agree, left = disagree, up = flip, down = deeper)
+- **CardStack** — manages card queue and navigation
+- **CardFront / CardBack** — flip card showing post content → detailed analysis
+- **ArgumentDNA** — visual representation of an argument's logical structure
+- **Anti-Echo Chamber Engine** — rewires what you see next based on how you swipe:
 
 | You swipe... | Next card is... |
 |-------------|----------------|
@@ -69,17 +86,69 @@ The **anti-echo-chamber engine** rewires what you see next based on how you swip
 | Flip (↑) | Post from the opposing cluster |
 | Deeper (↓) | Logical parent in the argument chain |
 
+### Landing Page
+
+Polished hero page with animated feature cards, radial glow effects, and "Enter COSMOS" CTA that triggers the full pipeline on the demo topic (SF Richmond community).
+
+### Supporting UI
+
+- **LoadingCosmos** — staged loading screen showing pipeline progress
+- **ComposeOverlay** — submit your own post into the discussion
+- **NarratorSheet** — AI narrator panel for contextual Q&A
+- **GestureHints** — onboarding overlays for interaction guidance
+- **LiveMutation** — real-time visual feedback on discussion changes
+- **ConstellationCard** — summary card for cluster-level insights
+- **ErrorBoundary** — graceful error handling
+- **EmotionPalette** — consistent emotion→color mapping across all views
+
+---
+
+## Architecture
+
+```
+cosmos/
+├── src/
+│   ├── App.tsx                    ← Hero → Loading → 3D Experience flow
+│   ├── components/
+│   │   ├── CosmosExperience.tsx   ← Main 3D canvas orchestrator
+│   │   ├── MapMode/              ← 3D constellation (Canvas3D, PostCloud, Edges, Clusters)
+│   │   ├── ReadMode/             ← Card system (Swipeable, Stack, Front/Back, ArgumentDNA)
+│   │   ├── UI/                   ← Narrator, Loading, Calibration, Perception debug
+│   │   └── shared/               ← EmotionPalette
+│   ├── hooks/                    ← State management (gaze, fusion, adaptive, navigation)
+│   └── lib/
+│       ├── agents/               ← Claude-powered agents (5 specialists + base)
+│       ├── orchestrator.ts       ← Pipeline coordination
+│       ├── antiEchoChamber.ts    ← Card reordering logic
+│       ├── fusionLayer.ts        ← Mouse + gaze + face signal fusion
+│       ├── adaptiveModel.ts      ← Perception-driven UI adaptation
+│       ├── types.ts              ← 292-line type system covering the full domain
+│       └── demoData.ts           ← Pre-cached 3D layout for offline dev
+├── server/                       ← Express 5 backend (SSE pipeline, API routes)
+└── public/
+```
+
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19, Three.js (R3F), Framer Motion, Tailwind v4 |
-| Backend | Express 5, Claude API (Anthropic SDK) |
-| 3D Engine | @react-three/fiber, @react-three/drei |
-| Perception | WebGazer.js, MediaPipe FaceMesh, @use-gesture |
-| Infra | Vite 7, TypeScript 5.9, Firebase |
+| Frontend | React 19, Three.js via React Three Fiber, Framer Motion, Tailwind v4 |
+| Backend | Express 5, Claude API (Anthropic SDK), SSE streaming |
+| 3D Engine | @react-three/fiber, @react-three/drei, custom shaders |
+| Perception | WebGazer.js, MediaPipe FaceMesh, @use-gesture/react |
+| Build | Vite 7, TypeScript 5.9 |
+
+---
+
+## The Goal
+
+COSMOS is a proof of concept for **discussion interfaces that understand both the conversation and how you read it.**
+
+Three forms of input — mouse, gaze, face — fuse into a single intent signal. Five agents — generator, cartographer, architect, narrator, classifier — turn raw text into spatial meaning. The anti-echo-chamber engine ensures you don't just see what you already believe.
+
+The current build demonstrates the AI pipeline and 3D visualization end-to-end. The card-swipe experience and perception integration are the next frontier.
 
 ---
 
@@ -95,7 +164,7 @@ npm run dev
 
 ## Built At
 
-Built in 3 days at the **Anthropic Opus 4.6 Hackathon** — February 2026.
+3 days. **Anthropic Opus 4.6 Hackathon** — February 2026.
 
 By **Rae**.
 
