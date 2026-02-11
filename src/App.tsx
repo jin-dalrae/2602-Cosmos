@@ -1,84 +1,85 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useCosmosData from './hooks/useCosmosData'
 import CosmosExperience from './components/CosmosExperience'
 import LoadingCosmos from './components/UI/LoadingCosmos'
-import PerceptionDebug from './components/UI/PerceptionDebug'
-import { DEMO_LAYOUT, DEMO_URL } from './lib/demoData'
 
-type AppState = 'landing' | 'loading' | 'experience'
+type AppState = 'hero' | 'loading' | 'experience'
 
-const SAMPLE_LINKS = [
+// ═══ Feature cards for the hero page ═══
+const FEATURES = [
   {
-    label: 'Should AI be regulated? (demo)',
-    url: DEMO_URL,
+    title: 'Spatial Discussions',
+    desc: 'Community posts arranged in 3D space — clustered by topic, colored by emotion, connected by relationships.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D4B872" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="2" />
+        <circle cx="4" cy="7" r="1.5" />
+        <circle cx="20" cy="7" r="1.5" />
+        <circle cx="6" cy="18" r="1.5" />
+        <circle cx="18" cy="17" r="1.5" />
+        <line x1="6" y1="7" x2="10" y2="11" opacity="0.4" />
+        <line x1="18" y1="7" x2="14" y2="11" opacity="0.4" />
+        <line x1="7" y1="17" x2="10" y2="13" opacity="0.4" />
+        <line x1="17" y1="16" x2="14" y2="13" opacity="0.4" />
+      </svg>
+    ),
   },
   {
-    label: 'Is remote work better for productivity? (requires API)',
-    url: 'https://www.reddit.com/r/technology/comments/1example1/is_remote_work_better_for_productivity/',
+    title: 'AI-Powered Analysis',
+    desc: 'Every post is analyzed for stance, emotion, hidden assumptions, and logical structure by Claude.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8FB8A0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.4V11h3a3 3 0 0 1 3 3v1" />
+        <path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.4V11H7a3 3 0 0 0-3 3v1" />
+        <circle cx="4" cy="17" r="2" />
+        <circle cx="20" cy="17" r="2" />
+        <circle cx="12" cy="20" r="2" />
+        <line x1="12" y1="11" x2="12" y2="18" opacity="0.4" />
+      </svg>
+    ),
   },
   {
-    label: 'Should cities ban cars from downtown? (requires API)',
-    url: 'https://www.reddit.com/r/urbanplanning/comments/1example3/should_cities_ban_cars_from_downtown/',
+    title: 'Community Clusters',
+    desc: 'Discover natural groups — who agrees, who disagrees, and the bridge-builders in between.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#C47A5A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="7" cy="8" r="4" opacity="0.3" fill="#C47A5A" />
+        <circle cx="17" cy="8" r="4" opacity="0.3" fill="#8FB8A0" />
+        <circle cx="12" cy="17" r="4" opacity="0.3" fill="#D4B872" />
+        <circle cx="7" cy="8" r="1" fill="#C47A5A" />
+        <circle cx="17" cy="8" r="1" fill="#8FB8A0" />
+        <circle cx="12" cy="17" r="1" fill="#D4B872" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Hidden Assumptions',
+    desc: 'See what people assume but never say. Every argument rests on beliefs — COSMOS makes them visible.',
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9B8FB8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+        <line x1="12" y1="5" x2="12" y2="3" strokeDasharray="2 2" />
+        <line x1="18" y1="7" x2="19.5" y2="5.5" strokeDasharray="2 2" />
+        <line x1="6" y1="7" x2="4.5" y2="5.5" strokeDasharray="2 2" />
+      </svg>
+    ),
   },
 ]
 
 export default function App() {
-  const [appState, setAppState] = useState<AppState>('landing')
-  const [urlInput, setUrlInput] = useState('')
-  const [showPerceptionDebug, setShowPerceptionDebug] = useState(false)
-  const { layout, isLoading, progress, error, processUrl, setLayout, setIsLoading, setProgress } =
+  const [appState, setAppState] = useState<AppState>('hero')
+  const { layout, isLoading, progress, error, processTopic } =
     useCosmosData()
 
-  // Ref to track demo loading timeout so we can clean up
-  const demoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const handleExplore = useCallback(
-    (url: string) => {
-      if (!url.trim()) return
-      setAppState('loading')
-
-      // Demo URL — skip API, load pre-cached data with simulated delay
-      if (url.trim() === DEMO_URL) {
-        setIsLoading(true)
-        setProgress({ stage: 'Loading demo cosmos...', percent: 30 })
-
-        // Simulate progress stages
-        demoTimeoutRef.current = setTimeout(() => {
-          setProgress({ stage: 'Arranging constellations...', percent: 70 })
-        }, 600)
-
-        demoTimeoutRef.current = setTimeout(() => {
-          setProgress({ stage: 'Ready', percent: 100 })
-          setLayout(DEMO_LAYOUT)
-          setIsLoading(false)
-        }, 1500)
-
-        return
-      }
-
-      // Real API flow
-      processUrl(url.trim())
-    },
-    [processUrl, setLayout, setIsLoading, setProgress],
-  )
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      handleExplore(urlInput)
-    },
-    [urlInput, handleExplore],
-  )
+  const handleEnter = useCallback(() => {
+    setAppState('loading')
+    processTopic('SF Richmond')
+  }, [processTopic])
 
   const handleBack = useCallback(() => {
-    // Clean up any pending demo timeout
-    if (demoTimeoutRef.current) {
-      clearTimeout(demoTimeoutRef.current)
-      demoTimeoutRef.current = null
-    }
-    setAppState('landing')
-    setUrlInput('')
+    setAppState('hero')
   }, [])
 
   // Transition to experience when layout arrives
@@ -86,204 +87,306 @@ export default function App() {
     setAppState('experience')
   }
 
-  // If an error occurs during loading, allow going back
-  if (appState === 'loading' && error && !isLoading) {
-    // Stay on loading screen but show the error
-  }
-
   return (
     <div className="w-full h-full relative" style={{ overflow: 'hidden' }}>
-      {/* Perception Debug Screen */}
-      {showPerceptionDebug && (
-        <PerceptionDebug onClose={() => setShowPerceptionDebug(false)} />
-      )}
-
       <AnimatePresence mode="wait">
-        {/* ═══ Landing State ═══ */}
-        {appState === 'landing' && (
+        {/* ═══ Hero / Feature Landing ═══ */}
+        {appState === 'hero' && (
           <motion.div
-            key="landing"
-            className="flex flex-col items-center justify-center w-full h-full px-6"
+            key="hero"
+            className="w-full h-full overflow-y-auto"
             style={{
-              background: 'linear-gradient(180deg, #262220 0%, #1C1A18 100%)',
+              background: 'linear-gradient(180deg, #1C1A18 0%, #262220 40%, #1C1A18 100%)',
             }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.5 }}
           >
-            {/* Title */}
-            <h1
-              style={{
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                fontSize: 48,
-                fontWeight: 400,
-                color: '#F5F2EF',
-                letterSpacing: 6,
-                marginBottom: 12,
-              }}
+            {/* Hero section */}
+            <div
+              className="flex flex-col items-center justify-center px-6"
+              style={{ minHeight: '85vh', position: 'relative' }}
             >
-              COSMOS
-            </h1>
-
-            {/* Subtitle */}
-            <p
-              style={{
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                fontSize: 16,
-                color: '#9E9589',
-                marginBottom: 48,
-                letterSpacing: 0.5,
-              }}
-            >
-              Explore discussions as constellations
-            </p>
-
-            {/* URL input form */}
-            <form
-              onSubmit={handleSubmit}
-              className="flex flex-col items-center w-full"
-              style={{ maxWidth: 440 }}
-            >
-              <input
-                type="url"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="Paste a Reddit discussion URL..."
+              {/* Subtle radial glow behind title */}
+              <div
                 style={{
-                  width: '100%',
-                  padding: '14px 18px',
-                  borderRadius: 10,
-                  border: '1.5px solid #3A3530',
-                  background: '#262220',
-                  color: '#F5F2EF',
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: 15,
-                  outline: 'none',
-                  transition: 'border-color 0.2s',
-                  marginBottom: 16,
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = '#D4B872'
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = '#3A3530'
+                  position: 'absolute',
+                  top: '30%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 500,
+                  height: 500,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, rgba(212, 184, 114, 0.06) 0%, transparent 70%)',
+                  pointerEvents: 'none',
                 }}
               />
 
-              <button
-                type="submit"
-                disabled={!urlInput.trim()}
-                style={{
-                  padding: '12px 40px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: urlInput.trim()
-                    ? 'linear-gradient(135deg, #D4B872, #C47A5A)'
-                    : '#3A3530',
-                  color: urlInput.trim() ? '#1C1A18' : '#6B6560',
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: 16,
-                  fontWeight: 600,
-                  cursor: urlInput.trim() ? 'pointer' : 'default',
-                  transition: 'all 0.25s',
-                  letterSpacing: 1,
-                }}
-                onMouseEnter={(e) => {
-                  if (urlInput.trim()) {
-                    e.currentTarget.style.transform = 'scale(1.03)'
-                    e.currentTarget.style.boxShadow =
-                      '0 4px 20px rgba(212, 184, 114, 0.3)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)'
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}
               >
-                Explore
-              </button>
-            </form>
-
-            {/* Sample links */}
-            <div
-              className="flex flex-col items-center"
-              style={{ marginTop: 48, gap: 12 }}
-            >
-              <p
-                style={{
-                  fontFamily: 'system-ui, sans-serif',
-                  fontSize: 12,
-                  color: '#6B6560',
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  marginBottom: 4,
-                }}
-              >
-                Or try a sample
-              </p>
-              <button
-                onClick={() => setShowPerceptionDebug(true)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  border: '1px solid #9B8FB830',
-                  background: 'rgba(155, 143, 184, 0.08)',
-                  color: '#9B8FB8',
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  maxWidth: 360,
-                  marginBottom: 8,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#9B8FB8'
-                  e.currentTarget.style.background = 'rgba(155, 143, 184, 0.15)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#9B8FB830'
-                  e.currentTarget.style.background = 'rgba(155, 143, 184, 0.08)'
-                }}
-              >
-                Perception Debug — see what Cosmos sees
-              </button>
-              {SAMPLE_LINKS.map((link) => (
-                <button
-                  key={link.url}
-                  onClick={() => {
-                    setUrlInput(link.url)
-                    handleExplore(link.url)
-                  }}
+                <h1
                   style={{
-                    padding: '8px 16px',
-                    borderRadius: 8,
-                    border: '1px solid #3A3530',
-                    background: 'transparent',
-                    color: '#9E9589',
                     fontFamily: 'Georgia, "Times New Roman", serif',
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    maxWidth: 360,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#D4B872'
-                    e.currentTarget.style.color = '#D4B872'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#3A3530'
-                    e.currentTarget.style.color = '#9E9589'
+                    fontSize: 72,
+                    fontWeight: 400,
+                    color: '#F5F2EF',
+                    letterSpacing: 12,
+                    marginBottom: 16,
+                    lineHeight: 1,
                   }}
                 >
-                  {link.label}
+                  COSMOS
+                </h1>
+                <p
+                  style={{
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    fontSize: 20,
+                    color: '#9E9589',
+                    letterSpacing: 1,
+                    marginBottom: 8,
+                  }}
+                >
+                  Your community, as a constellation
+                </p>
+                <p
+                  style={{
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    fontSize: 14,
+                    color: '#6B6560',
+                    maxWidth: 480,
+                    margin: '0 auto',
+                    lineHeight: 1.6,
+                    marginBottom: 48,
+                  }}
+                >
+                  See every voice, every argument, every hidden assumption — arranged in space
+                  so you can finally see the shape of a conversation.
+                </p>
+              </motion.div>
+
+              {/* CTA Button */}
+              <motion.button
+                onClick={handleEnter}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.5 }}
+                style={{
+                  padding: '16px 52px',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #D4B872, #C47A5A)',
+                  color: '#1C1A18',
+                  fontFamily: 'Georgia, "Times New Roman", serif',
+                  fontSize: 18,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  letterSpacing: 2,
+                  position: 'relative',
+                  zIndex: 1,
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+                whileHover={{
+                  scale: 1.04,
+                  boxShadow: '0 8px 40px rgba(212, 184, 114, 0.3)',
+                }}
+                whileTap={{ scale: 0.98 }}
+              >
+                ENTER COSMOS
+              </motion.button>
+
+              {/* Scroll hint */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.5, duration: 1 }}
+                style={{
+                  position: 'absolute',
+                  bottom: 32,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                }}
+              >
+                <motion.div
+                  animate={{ y: [0, 8, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'system-ui, sans-serif',
+                      fontSize: 11,
+                      color: '#6B6560',
+                      letterSpacing: 2,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Learn more
+                  </span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6560" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12l7 7 7-7" />
+                  </svg>
+                </motion.div>
+              </motion.div>
+            </div>
+
+            {/* Features section */}
+            <div
+              className="flex flex-col items-center px-6"
+              style={{ paddingBottom: 80 }}
+            >
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-100px' }}
+                transition={{ duration: 0.6 }}
+                style={{
+                  fontFamily: 'system-ui, sans-serif',
+                  fontSize: 11,
+                  color: '#D4B872',
+                  letterSpacing: 3,
+                  textTransform: 'uppercase',
+                  marginBottom: 32,
+                }}
+              >
+                How it works
+              </motion.p>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: 24,
+                  maxWidth: 960,
+                  width: '100%',
+                }}
+              >
+                {FEATURES.map((feature, i) => (
+                  <motion.div
+                    key={feature.title}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: '-50px' }}
+                    transition={{ duration: 0.5, delay: i * 0.1 }}
+                    style={{
+                      padding: 28,
+                      borderRadius: 14,
+                      border: '1px solid #3A3530',
+                      background: 'rgba(38, 34, 32, 0.5)',
+                      backdropFilter: 'blur(8px)',
+                    }}
+                  >
+                    <div style={{ marginBottom: 16 }}>{feature.icon}</div>
+                    <h3
+                      style={{
+                        fontFamily: 'Georgia, "Times New Roman", serif',
+                        fontSize: 16,
+                        fontWeight: 600,
+                        color: '#F5F2EF',
+                        marginBottom: 8,
+                      }}
+                    >
+                      {feature.title}
+                    </h3>
+                    <p
+                      style={{
+                        fontFamily: 'Georgia, "Times New Roman", serif',
+                        fontSize: 13,
+                        color: '#9E9589',
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {feature.desc}
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Bottom CTA */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="flex flex-col items-center"
+                style={{ marginTop: 64 }}
+              >
+                <p
+                  style={{
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    fontSize: 24,
+                    color: '#F5F2EF',
+                    marginBottom: 8,
+                    textAlign: 'center',
+                  }}
+                >
+                  Ready to see your community differently?
+                </p>
+                <p
+                  style={{
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    fontSize: 14,
+                    color: '#6B6560',
+                    marginBottom: 32,
+                    textAlign: 'center',
+                  }}
+                >
+                  Explore community discussions about SF Richmond
+                </p>
+                <button
+                  onClick={handleEnter}
+                  style={{
+                    padding: '14px 44px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #D4B872, #C47A5A)',
+                    color: '#1C1A18',
+                    fontFamily: 'Georgia, "Times New Roman", serif',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    letterSpacing: 1.5,
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.04)'
+                    e.currentTarget.style.boxShadow = '0 8px 40px rgba(212, 184, 114, 0.3)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
+                  ENTER COSMOS
                 </button>
-              ))}
+
+                {/* Powered by line */}
+                <p
+                  style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 11,
+                    color: '#4A4540',
+                    marginTop: 24,
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Powered by Claude &middot; Built at Anthropic Hackathon 2025
+                </p>
+              </motion.div>
             </div>
           </motion.div>
         )}
 
-        {/* ═══ Loading State ═══ */}
+        {/* ═══ Loading ═══ */}
         {appState === 'loading' && (
           <motion.div
             key="loading"
@@ -295,57 +398,20 @@ export default function App() {
           >
             <LoadingCosmos stage={progress.stage} percent={progress.percent} />
 
-            {/* Error overlay */}
             {error && (
               <div
                 className="absolute inset-0 flex flex-col items-center justify-center"
-                style={{
-                  background: 'rgba(28, 26, 24, 0.9)',
-                  zIndex: 10,
-                }}
+                style={{ background: 'rgba(28, 26, 24, 0.9)', zIndex: 10 }}
               >
-                <p
-                  style={{
-                    fontFamily: 'Georgia, "Times New Roman", serif',
-                    color: '#C47A5A',
-                    fontSize: 16,
-                    marginBottom: 8,
-                  }}
-                >
+                <p style={{ fontFamily: 'Georgia, serif', color: '#C47A5A', fontSize: 16, marginBottom: 8 }}>
                   Something went wrong
                 </p>
-                <p
-                  style={{
-                    fontFamily: 'system-ui, sans-serif',
-                    color: '#9E9589',
-                    fontSize: 13,
-                    maxWidth: 320,
-                    textAlign: 'center',
-                    lineHeight: 1.5,
-                    marginBottom: 24,
-                  }}
-                >
+                <p style={{ fontFamily: 'system-ui', color: '#9E9589', fontSize: 13, maxWidth: 320, textAlign: 'center', lineHeight: 1.5, marginBottom: 24 }}>
                   {error}
                 </p>
                 <button
                   onClick={handleBack}
-                  style={{
-                    padding: '10px 24px',
-                    borderRadius: 8,
-                    border: '1px solid #3A3530',
-                    background: 'transparent',
-                    color: '#F5F2EF',
-                    fontFamily: 'Georgia, "Times New Roman", serif',
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#D4B872'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#3A3530'
-                  }}
+                  style={{ padding: '10px 24px', borderRadius: 8, border: '1px solid #3A3530', background: 'transparent', color: '#F5F2EF', fontFamily: 'Georgia, serif', fontSize: 14, cursor: 'pointer' }}
                 >
                   Go back
                 </button>
@@ -354,7 +420,7 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* ═══ Experience State ═══ */}
+        {/* ═══ 3D Experience ═══ */}
         {appState === 'experience' && layout && (
           <motion.div
             key="experience"
@@ -366,7 +432,6 @@ export default function App() {
           >
             <CosmosExperience layout={layout} />
 
-            {/* Back button */}
             <button
               onClick={handleBack}
               className="absolute"
@@ -396,26 +461,6 @@ export default function App() {
             >
               &larr; Back
             </button>
-
-            {/* Topic label */}
-            <div
-              className="absolute"
-              style={{
-                top: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 100,
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                fontSize: 14,
-                color: '#9E9589',
-                letterSpacing: 0.5,
-                textAlign: 'center',
-                maxWidth: 300,
-                pointerEvents: 'none',
-              }}
-            >
-              {layout.topic}
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

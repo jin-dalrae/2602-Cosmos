@@ -2,6 +2,7 @@
 // harvest -> cartographer (batch 1 -> extract labels -> remaining batches in parallel) -> architect -> merge
 
 import { fetchRedditThread } from './reddit.js'
+import { generateDiscussion } from './agents/generator.js'
 import { runCartographer, extractLabels } from './agents/cartographer.js'
 import { runArchitect } from './agents/architect.js'
 import { runNarrator } from './agents/narrator.js'
@@ -59,10 +60,18 @@ function batch<T>(arr: T[], size: number): T[][] {
 }
 
 /**
- * Process a Reddit discussion URL through the full COSMOS pipeline.
+ * Check if the input looks like a URL.
+ */
+function isUrl(input: string): boolean {
+  return /^https?:\/\//.test(input.trim())
+}
+
+/**
+ * Process a discussion — from a Reddit URL or a topic string.
+ * If a Reddit URL is provided but fetching fails, falls back to AI-generated discussion.
  */
 export async function processDiscussion(
-  redditUrl: string,
+  input: string,
   onProgress?: (event: ProgressEvent) => void
 ): Promise<CosmosLayout> {
   const startTime = Date.now()
@@ -70,10 +79,45 @@ export async function processDiscussion(
     onProgress?.({ stage, percent, detail })
   }
 
-  // ── Step 1: Harvest ──
-  progress('Fetching Reddit discussion...', 5)
-  const { posts: rawPosts, topic } = await fetchRedditThread(redditUrl)
-  progress('Discussion fetched', 10, `${rawPosts.length} posts found`)
+  // ── Step 1: Harvest (Reddit URL or generate from topic) ──
+  let rawPosts: import('./types.js').RawPost[]
+  let topic: string
+
+  if (isUrl(input)) {
+    // Try Reddit first, fall back to generation
+    try {
+      progress('Fetching Reddit discussion...', 5)
+      const result = await fetchRedditThread(input)
+      rawPosts = result.posts
+      topic = result.topic
+      progress('Discussion fetched', 10, `${rawPosts.length} posts found`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      progress('Reddit unavailable — generating discussion...', 3, msg)
+      const urlTopic = input
+        .replace(/.*\/comments\/[^/]+\//, '')
+        .replace(/\/$/, '')
+        .replace(/_/g, ' ')
+        .replace(/\.json.*/, '')
+      const result = await generateDiscussion(urlTopic || 'community discussion', (batchIdx, totalBatches, subtopic, postsSoFar) => {
+        const pct = 3 + Math.round(((batchIdx + 1) / totalBatches) * 12)
+        progress(`Generated ${subtopic}`, pct, `${postsSoFar} posts so far`)
+      })
+      rawPosts = result.posts
+      topic = result.topic
+      progress('Community generated', 15, `${rawPosts.length} posts created`)
+    }
+  } else {
+    // Input is a topic — generate community discussion in batches
+    progress('Generating community discussion...', 3)
+    const result = await generateDiscussion(input.trim(), (batchIdx, totalBatches, subtopic, postsSoFar) => {
+      const pct = 3 + Math.round(((batchIdx + 1) / totalBatches) * 12)
+      progress(`Generated ${subtopic}`, pct, `${postsSoFar} posts so far`)
+    })
+    rawPosts = result.posts
+    topic = result.topic
+    progress('Community generated', 15, `${rawPosts.length} posts across 7 topics`)
+  }
 
   if (rawPosts.length === 0) {
     throw new Error('No posts found in this discussion')
@@ -129,19 +173,26 @@ export async function processDiscussion(
   // ── Step 4: Merge ──
   progress('Assembling COSMOS...', 90)
 
+  const SCALE = 0.6
   const cosmosPosts: CosmosPost[] = allEnriched.map((post) => {
-    const position = architectResult.refined_positions[post.id]
-    return {
-      ...post,
-      position: position ?? [0, 0, 0] as [number, number, number],
-    }
+    const p = architectResult.refined_positions[post.id]
+    const position: [number, number, number] = p
+      ? [p[0] * SCALE, p[1] * SCALE, p[2] * SCALE]
+      : [0, 0, 0]
+    return { ...post, position }
   })
 
   const layout: CosmosLayout = {
     topic,
-    source: redditUrl,
-    clusters: architectResult.clusters,
-    gaps: architectResult.gaps,
+    source: input,
+    clusters: architectResult.clusters.map((c) => ({
+      ...c,
+      center: [c.center[0] * SCALE, c.center[1] * SCALE, c.center[2] * SCALE] as [number, number, number],
+    })),
+    gaps: architectResult.gaps.map((g) => ({
+      ...g,
+      position: [g.position[0] * SCALE, g.position[1] * SCALE, g.position[2] * SCALE] as [number, number, number],
+    })),
     posts: cosmosPosts,
     bridge_posts: architectResult.bridge_posts,
     spatial_summary: architectResult.spatial_summary,

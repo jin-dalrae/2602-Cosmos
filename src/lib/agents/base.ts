@@ -6,13 +6,15 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-const MODEL = 'claude-opus-4-6-20250219'
+const MODEL_OPUS = 'claude-opus-4-6-20250219'
+const MODEL_HAIKU = 'claude-haiku-4-5-20251001'
 const MAX_RETRIES = 2
 
 interface CallOpusParams {
   systemPrompt: string
   userMessage: string
   maxTokens?: number
+  model?: 'opus' | 'haiku'
 }
 
 function sleep(ms: number): Promise<void> {
@@ -42,13 +44,15 @@ export async function callOpus({
   systemPrompt,
   userMessage,
   maxTokens = 16000,
+  model = 'haiku',
 }: CallOpusParams): Promise<string> {
+  const modelId = model === 'haiku' ? MODEL_HAIKU : MODEL_OPUS
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await client.messages.create({
-        model: MODEL,
+        model: modelId,
         max_tokens: maxTokens,
         system: systemPrompt,
         messages: [

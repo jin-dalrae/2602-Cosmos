@@ -6,10 +6,11 @@ import { getCached, setCached } from '../../src/lib/cache.js'
 import type { ProgressEvent } from '../../src/lib/types.js'
 
 export async function processRoute(req: Request, res: Response) {
-  const { url } = req.body
+  const { url, topic } = req.body
+  const input = url || topic
 
-  if (!url || typeof url !== 'string') {
-    res.status(400).json({ error: 'Missing reddit URL' })
+  if (!input || typeof input !== 'string') {
+    res.status(400).json({ error: 'Missing url or topic' })
     return
   }
 
@@ -23,19 +24,21 @@ export async function processRoute(req: Request, res: Response) {
   }
 
   try {
-    // Check cache first
-    sendEvent({ stage: 'Checking cache...', percent: 2 })
-    const cached = await getCached(url)
+    // Check cache first (only for URLs)
+    if (url) {
+      sendEvent({ stage: 'Checking cache...', percent: 2 })
+      const cached = await getCached(url)
 
-    if (cached) {
-      sendEvent({ stage: 'Found cached layout', percent: 50 })
-      sendEvent({
-        stage: 'COSMOS ready (cached)',
-        percent: 100,
-        layout: cached,
-      })
-      res.end()
-      return
+      if (cached) {
+        sendEvent({ stage: 'Found cached layout', percent: 50 })
+        sendEvent({
+          stage: 'COSMOS ready (cached)',
+          percent: 100,
+          layout: cached,
+        })
+        res.end()
+        return
+      }
     }
 
     // Run the full pipeline with progress streaming
@@ -47,12 +50,14 @@ export async function processRoute(req: Request, res: Response) {
       })
     }
 
-    const layout = await processDiscussion(url, onProgress)
+    const layout = await processDiscussion(input, onProgress)
 
-    // Cache the result (fire and forget)
-    setCached(url, layout).catch((err) =>
-      console.warn('[Process] Cache write failed:', err)
-    )
+    // Cache the result (fire and forget, only for URLs)
+    if (url) {
+      setCached(url, layout).catch((err) =>
+        console.warn('[Process] Cache write failed:', err)
+      )
+    }
 
     // Send the final layout
     sendEvent({

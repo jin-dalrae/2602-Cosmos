@@ -7,6 +7,7 @@ interface CosmosDataReturn {
   progress: { stage: string; percent: number }
   error: string | null
   processUrl: (url: string) => void
+  processTopic: (topic: string) => void
   setLayout: (layout: CosmosLayout | null) => void
   setIsLoading: (loading: boolean) => void
   setProgress: (progress: { stage: string; percent: number }) => void
@@ -29,7 +30,7 @@ export default function useCosmosData(): CosmosDataReturn {
   // Abort controller for cancelling in-flight requests
   const abortRef = useRef<AbortController | null>(null)
 
-  const processUrl = useCallback((url: string) => {
+  const startProcessing = useCallback((body: Record<string, string>) => {
     // Cancel any in-flight request
     if (abortRef.current) {
       abortRef.current.abort()
@@ -49,7 +50,7 @@ export default function useCosmosData(): CosmosDataReturn {
         const response = await fetch('/api/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
+          body: JSON.stringify(body),
           signal: abortController.signal,
         })
 
@@ -139,12 +140,21 @@ export default function useCosmosData(): CosmosDataReturn {
     })()
   }, [layout])
 
+  const processUrl = useCallback((url: string) => {
+    startProcessing({ url })
+  }, [startProcessing])
+
+  const processTopic = useCallback((topic: string) => {
+    startProcessing({ topic })
+  }, [startProcessing])
+
   return {
     layout,
     isLoading,
     progress,
     error,
     processUrl,
+    processTopic,
     setLayout,
     setIsLoading,
     setProgress,
