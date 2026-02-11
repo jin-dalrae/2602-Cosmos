@@ -4,7 +4,7 @@
 
 > *"You just read. The interface reads you back."*
 
-<video src="https://github.com/jin-dalrae/2602-Claude-Hackathon-Cosmos/releases/download/v0.1.0/demo.mp4" width="100%" controls></video>
+![COSMOS Demo](demo.gif)
 
 ---
 
