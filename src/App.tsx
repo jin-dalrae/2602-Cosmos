@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import useCosmosData from './hooks/useCosmosData'
 import CosmosExperience from './components/CosmosExperience'
 import LoadingCosmos from './components/UI/LoadingCosmos'
+import PerceptionDebug from './components/UI/PerceptionDebug'
 import { DEMO_LAYOUT, DEMO_URL } from './lib/demoData'
 
 type AppState = 'landing' | 'loading' | 'experience'
@@ -25,6 +26,7 @@ const SAMPLE_LINKS = [
 export default function App() {
   const [appState, setAppState] = useState<AppState>('landing')
   const [urlInput, setUrlInput] = useState('')
+  const [showPerceptionDebug, setShowPerceptionDebug] = useState(false)
   const { layout, isLoading, progress, error, processUrl, setLayout, setIsLoading, setProgress } =
     useCosmosData()
 
@@ -91,6 +93,11 @@ export default function App() {
 
   return (
     <div className="w-full h-full relative" style={{ overflow: 'hidden' }}>
+      {/* Perception Debug Screen */}
+      {showPerceptionDebug && (
+        <PerceptionDebug onClose={() => setShowPerceptionDebug(false)} />
+      )}
+
       <AnimatePresence mode="wait">
         {/* ═══ Landing State ═══ */}
         {appState === 'landing' && (
@@ -215,6 +222,32 @@ export default function App() {
               >
                 Or try a sample
               </p>
+              <button
+                onClick={() => setShowPerceptionDebug(true)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #9B8FB830',
+                  background: 'rgba(155, 143, 184, 0.08)',
+                  color: '#9B8FB8',
+                  fontFamily: 'Georgia, "Times New Roman", serif',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  maxWidth: 360,
+                  marginBottom: 8,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#9B8FB8'
+                  e.currentTarget.style.background = 'rgba(155, 143, 184, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#9B8FB830'
+                  e.currentTarget.style.background = 'rgba(155, 143, 184, 0.08)'
+                }}
+              >
+                Perception Debug — see what Cosmos sees
+              </button>
               {SAMPLE_LINKS.map((link) => (
                 <button
                   key={link.url}
