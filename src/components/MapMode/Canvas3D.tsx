@@ -9,12 +9,12 @@ interface Canvas3DProps {
   settings: SceneSettings
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
+  recenter?: number
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
 }
 
-function CameraUpdater({ fov, distance }: { fov: number; distance: number }) {
+function CameraUpdater({ fov }: { fov: number }) {
   const { camera } = useThree()
-  const prevDistance = useRef(distance)
 
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera
@@ -24,23 +24,16 @@ function CameraUpdater({ fov, distance }: { fov: number; distance: number }) {
     }
   }, [camera, fov])
 
-  // Apply distance changes as relative offset so it doesn't undo pan animations
-  useEffect(() => {
-    const delta = distance - prevDistance.current
-    if (delta !== 0) {
-      camera.position.z += delta
-      prevDistance.current = distance
-    }
-  }, [camera, distance])
-
   return null
 }
 
-function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect }: {
+function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect, recenter, distance }: {
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
   damping?: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
+  recenter?: number
+  distance?: number
 }) {
   const { camera } = useThree()
   const controlsRef = useRef<any>(null)
@@ -69,6 +62,18 @@ function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect 
       animating.current = true
     }
   }, [focusTarget, camera])
+
+  // Recenter: animate camera to front-center at the given distance
+  const prevRecenter = useRef(recenter ?? 0)
+  useEffect(() => {
+    if (recenter !== undefined && recenter !== prevRecenter.current) {
+      prevRecenter.current = recenter
+      const r = distance ?? camera.position.length()
+      goalSpherical.current.set(r, Math.PI / 2, 0) // front center (0, 0, r)
+      currentSpherical.current.setFromVector3(camera.position)
+      animating.current = true
+    }
+  }, [recenter, distance, camera])
 
   useFrame(() => {
     const controls = controlsRef.current
@@ -147,12 +152,12 @@ function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect 
   )
 }
 
-export default function Canvas3D({ children, settings, focusTarget, pendingAutoSelect, onOrbitEnd }: Canvas3DProps) {
+export default function Canvas3D({ children, settings, focusTarget, pendingAutoSelect, recenter, onOrbitEnd }: Canvas3DProps) {
   return (
     <Canvas style={{ background: '#262220' }}>
       <PerspectiveCamera makeDefault fov={settings.fov} position={[0, 0, settings.cameraDistance]} />
-      <CameraUpdater fov={settings.fov} distance={settings.cameraDistance} />
-      <OrbitHandler onOrbitEnd={onOrbitEnd} damping={settings.damping} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} />
+      <CameraUpdater fov={settings.fov} />
+      <OrbitHandler onOrbitEnd={onOrbitEnd} damping={settings.damping} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} recenter={recenter} distance={settings.cameraDistance} />
 
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 5, 5]} intensity={0.4} />

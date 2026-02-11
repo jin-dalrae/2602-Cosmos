@@ -47,6 +47,18 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const [votes, setVotes] = useState<Map<string, 'up' | 'down'>>(() => new Map())
   const [composing, setComposing] = useState<ComposingState>(null)
   const [sceneSettings, setSceneSettings] = useState<SceneSettings>(DEFAULT_SETTINGS)
+  const [recenter, setRecenter] = useState(0)
+  const recenterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleSettingsChange = useCallback((next: SceneSettings) => {
+    setSceneSettings(next)
+    setSelectedPostId(null)
+    // Debounce recenter — only fire after user stops adjusting for 400ms
+    if (recenterTimer.current) clearTimeout(recenterTimer.current)
+    recenterTimer.current = setTimeout(() => {
+      setRecenter((c) => c + 1)
+    }, 400)
+  }, [])
 
   // Apply spread scale to post positions
   const scaledPosts = useMemo(() => {
@@ -323,7 +335,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>
       {/* Full-screen 3D canvas — always interactive for orbit/zoom */}
-      <Canvas3D settings={sceneSettings} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} onOrbitEnd={handleOrbitEnd}>
+      <Canvas3D settings={sceneSettings} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} recenter={recenter} onOrbitEnd={handleOrbitEnd}>
         {visiblePosts.map((post) => (
           <PostCard3D
             key={post.id}
@@ -346,7 +358,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       </Canvas3D>
 
       {/* Control panel */}
-      <ControlPanel settings={sceneSettings} onChange={setSceneSettings} />
+      <ControlPanel settings={sceneSettings} onChange={handleSettingsChange} />
 
       {/* Bottom-right actions */}
       <div style={{

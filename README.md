@@ -4,6 +4,8 @@
 
 > *"You just read. The interface reads you back."*
 
+https://github.com/jin-dalrae/2602-Claude-Hackathon-Cosmos/raw/main/demo.mp4
+
 ---
 
 ## The Problem
