@@ -4,6 +4,7 @@ import type { CosmosLayout } from '../lib/types'
 interface CosmosDataReturn {
   layout: CosmosLayout | null
   isLoading: boolean
+  isRefining: boolean
   progress: { stage: string; percent: number }
   error: string | null
   processUrl: (url: string) => void
@@ -21,6 +22,7 @@ interface CosmosDataReturn {
 export default function useCosmosData(): CosmosDataReturn {
   const [layout, setLayout] = useState<CosmosLayout | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isRefining, setIsRefining] = useState(false)
   const [progress, setProgress] = useState<{ stage: string; percent: number }>({
     stage: '',
     percent: 0,
@@ -43,6 +45,7 @@ export default function useCosmosData(): CosmosDataReturn {
     setLayout(null)
     setError(null)
     setIsLoading(true)
+    setIsRefining(false)
     setProgress({ stage: 'Connecting...', percent: 0 })
 
     ;(async () => {
@@ -108,10 +111,19 @@ export default function useCosmosData(): CosmosDataReturn {
               const percent = (event.percent as number) ?? 0
               setProgress({ stage, percent })
 
+              // Partial layout — show experience immediately
+              if (event.partial_layout) {
+                setLayout(event.partial_layout as CosmosLayout)
+                setIsLoading(false)
+                setIsRefining(true)
+                continue
+              }
+
               // Final event contains the layout
               if (percent >= 100 && event.layout) {
                 setLayout(event.layout as CosmosLayout)
                 setIsLoading(false)
+                setIsRefining(false)
                 return
               }
             } catch (parseErr) {
@@ -151,6 +163,7 @@ export default function useCosmosData(): CosmosDataReturn {
   return {
     layout,
     isLoading,
+    isRefining,
     progress,
     error,
     processUrl,

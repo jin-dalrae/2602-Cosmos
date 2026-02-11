@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from 'react'
+import { useCallback, useState, useMemo, useEffect } from 'react'
 import type { CosmosLayout, CosmosPost } from '../lib/types'
 import Canvas3D from './MapMode/Canvas3D'
 import PostCard3D from './MapMode/PostCard3D'
@@ -10,17 +10,45 @@ type ComposingState = { type: 'post' } | { type: 'reply'; parentId: string } | n
 
 interface CosmosExperienceProps {
   layout: CosmosLayout
+  isRefining?: boolean
 }
 
-export default function CosmosExperience({ layout }: CosmosExperienceProps) {
+export default function CosmosExperience({ layout, isRefining }: CosmosExperienceProps) {
   // Start with the highest-importance post selected — immediately readable
   const initialPostId = useMemo(() => {
     const sorted = [...layout.posts].sort((a, b) => b.importance - a.importance)
     return sorted[0]?.id ?? null
-  }, [layout.posts])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [selectedPostId, setSelectedPostId] = useState<string | null>(initialPostId)
   const [posts, setPosts] = useState<CosmosPost[]>(() => [...layout.posts])
+
+  // Sync incoming layout updates (new batches / architect refinement)
+  useEffect(() => {
+    setPosts((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id))
+      const incomingMap = new Map(layout.posts.map((p) => [p.id, p]))
+
+      // Update positions for existing posts (architect refinement)
+      const updated = prev.map((p) => {
+        const incoming = incomingMap.get(p.id)
+        if (incoming && (
+          incoming.position[0] !== p.position[0] ||
+          incoming.position[1] !== p.position[1] ||
+          incoming.position[2] !== p.position[2]
+        )) {
+          return { ...p, position: incoming.position }
+        }
+        return p
+      })
+
+      // Append new posts
+      const newPosts = layout.posts.filter((p) => !existingIds.has(p.id))
+      if (newPosts.length === 0) return updated
+      return [...updated, ...newPosts]
+    })
+  }, [layout.posts])
   const [votes, setVotes] = useState<Map<string, 'up' | 'down'>>(() => new Map())
   const [composing, setComposing] = useState<ComposingState>(null)
 
@@ -261,6 +289,29 @@ export default function CosmosExperience({ layout }: CosmosExperienceProps) {
           onSubmit={handleComposeSubmit}
           onCancel={() => setComposing(null)}
         />
+      )}
+
+      {/* Refining indicator */}
+      {isRefining && (
+        <div className="absolute" style={{
+          top: 16, right: 16, zIndex: 20,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 14px', borderRadius: 8,
+          backgroundColor: 'rgba(38, 34, 32, 0.85)', backdropFilter: 'blur(8px)',
+          border: '1px solid #3A3530',
+        }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%',
+            backgroundColor: '#D4B872',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }} />
+          <span style={{
+            fontFamily: 'system-ui', fontSize: 11, color: '#9E9589',
+          }}>
+            Loading more posts...
+          </span>
+          <style>{`@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+        </div>
       )}
 
       {/* Hint — only when no post is selected */}

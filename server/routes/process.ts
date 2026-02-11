@@ -50,7 +50,18 @@ export async function processRoute(req: Request, res: Response) {
       })
     }
 
-    const layout = await processDiscussion(input, onProgress)
+    const onPartialLayout = (partialLayout: import('../../src/lib/types.js').CosmosLayout) => {
+      sendEvent({
+        stage: 'Partial layout ready',
+        percent: Math.min(
+          59,
+          25 + Math.round((partialLayout.posts.length / 100) * 34)
+        ),
+        partial_layout: partialLayout,
+      })
+    }
+
+    const layout = await processDiscussion(input, onProgress, onPartialLayout)
 
     // Cache the result (fire and forget, only for URLs)
     if (url) {

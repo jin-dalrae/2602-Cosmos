@@ -70,7 +70,7 @@ const FEATURES = [
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('hero')
-  const { layout, isLoading, progress, error, processTopic } =
+  const { layout, isLoading, isRefining, progress, error, processTopic } =
     useCosmosData()
 
   const handleEnter = useCallback(() => {
@@ -430,7 +430,7 @@ export default function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4 }}
           >
-            <CosmosExperience layout={layout} />
+            <CosmosExperience layout={layout} isRefining={isRefining} />
 
             <button
               onClick={handleBack}

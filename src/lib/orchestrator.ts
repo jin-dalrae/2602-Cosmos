@@ -70,9 +70,50 @@ function isUrl(input: string): boolean {
  * Process a discussion — from a Reddit URL or a topic string.
  * If a Reddit URL is provided but fetching fails, falls back to AI-generated discussion.
  */
+/**
+ * Build a rough CosmosLayout from enriched posts using embedding_hint values.
+ * Used for partial/incremental rendering before the architect runs.
+ */
+function buildPartialLayout(
+  enrichedPosts: EnrichedPost[],
+  topic: string,
+  source: string,
+  labels: Labels,
+  startTime: number
+): CosmosLayout {
+  const SCALE = 3
+  const cosmosPosts: CosmosPost[] = enrichedPosts.map((post) => {
+    const hint = post.embedding_hint
+    const position: [number, number, number] = [
+      hint.opinion_axis * SCALE + (Math.random() - 0.5) * 0.6,
+      hint.abstraction * SCALE + (Math.random() - 0.5) * 0.6,
+      hint.novelty * SCALE + (Math.random() - 0.5) * 0.6,
+    ]
+    return { ...post, position }
+  })
+
+  return {
+    topic,
+    source,
+    clusters: [],
+    gaps: [],
+    posts: cosmosPosts,
+    bridge_posts: [],
+    spatial_summary: '',
+    metadata: {
+      total_posts: cosmosPosts.length,
+      processing_time_ms: Date.now() - startTime,
+      stance_labels: labels.stances,
+      theme_labels: labels.themes,
+      root_assumption_labels: labels.roots,
+    },
+  }
+}
+
 export async function processDiscussion(
   input: string,
-  onProgress?: (event: ProgressEvent) => void
+  onProgress?: (event: ProgressEvent) => void,
+  onPartialLayout?: (layout: CosmosLayout) => void
 ): Promise<CosmosLayout> {
   const startTime = Date.now()
   const progress = (stage: string, percent: number, detail?: string) => {
@@ -140,6 +181,11 @@ export async function processDiscussion(
   // Remaining batches: process in parallel with concurrency limit
   let allEnriched: EnrichedPost[] = [...firstBatchEnriched]
 
+  // Emit first partial layout
+  if (onPartialLayout) {
+    onPartialLayout(buildPartialLayout(allEnriched, topic, input, labels, startTime))
+  }
+
   if (batches.length > 1) {
     const remainingBatches = batches.slice(1)
     const batchResults = await parallelMap(
@@ -151,13 +197,23 @@ export async function processDiscussion(
           25 + Math.round((batchIdx / totalBatches) * 35),
           `Batch ${batchIdx + 1}/${totalBatches}`
         )
-        return runCartographer(batchPosts, batchIdx, totalBatches, labels)
+        const result = await runCartographer(batchPosts, batchIdx, totalBatches, labels)
+
+        // Emit partial layout with accumulated posts
+        if (onPartialLayout) {
+          allEnriched = allEnriched.concat(result)
+          onPartialLayout(buildPartialLayout(allEnriched, topic, input, labels, startTime))
+        }
+
+        return result
       },
       MAX_CONCURRENT
     )
 
-    for (const batchResult of batchResults) {
-      allEnriched = allEnriched.concat(batchResult)
+    if (!onPartialLayout) {
+      for (const batchResult of batchResults) {
+        allEnriched = allEnriched.concat(batchResult)
+      }
     }
   }
 
