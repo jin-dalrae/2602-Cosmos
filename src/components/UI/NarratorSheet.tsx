@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { CosmosLayout, SwipeEvent, UserPosition, NarratorResponse } from '../../lib/types'
+import type { CosmosLayout, SwipeEvent, UserPosition, NarratorResponse, GazeTelemetry } from '../../lib/types'
 import { UI_COLORS, BG_DARK, BG_DARKER } from '../shared/EmotionPalette'
 
 interface NarratorSheetProps {
@@ -10,6 +10,7 @@ interface NarratorSheetProps {
   isOpen: boolean
   onClose: () => void
   onHighlight?: (postIds: string[]) => void
+  gazeTelemetry?: GazeTelemetry
 }
 
 export default function NarratorSheet({
@@ -19,6 +20,7 @@ export default function NarratorSheet({
   isOpen,
   onClose,
   onHighlight,
+  gazeTelemetry,
 }: NarratorSheetProps) {
   const [question, setQuestion] = useState('')
   const [response, setResponse] = useState<NarratorResponse | null>(null)
@@ -57,6 +59,7 @@ export default function NarratorSheet({
             layout,
             swipeHistory,
             userPosition: userPosition ?? null,
+            gazeTelemetry: gazeTelemetry ?? null,
           }),
         })
 
@@ -79,7 +82,7 @@ export default function NarratorSheet({
         setIsLoading(false)
       }
     },
-    [layout, swipeHistory, userPosition, onHighlight],
+    [layout, swipeHistory, userPosition, onHighlight, gazeTelemetry],
   )
 
   const handleSubmit = useCallback(
