@@ -1,73 +1,104 @@
-# React + TypeScript + Vite
+# COSMOS
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> *"You just read. The interface reads you back."*
 
-Currently, two official plugins are available:
+COSMOS transforms online discussions from flat, endless scrolls into **spatial, navigable 3D experiences** — where AI understands both the conversation and how you read it.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## The Problem
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **800+ comment threads are unreadable.** Reddit, HN, Twitter — every discussion is a wall of text. The shape of a conversation is invisible.
+- **Your input is impoverished.** Reading is rich — your eyes linger, your brow furrows, you lean in — but the interface only knows what you click.
+- **Echo chambers are structural.** Platforms feed you what you already believe. Dissent gets buried. Nuance dies.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## What COSMOS Does
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Every post gets analyzed by Claude for **stance, emotion, hidden assumptions, and logical ancestry**. Then it gets placed in 3D space — clustered by ideology, colored by emotion, connected by argument structure.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+You explore the constellation by swiping cards. Agree, disagree, flip perspective, go deeper. The interface watches your eyes and face to understand what you *feel*, not just what you click.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**Agree with something? The strongest counterargument appears next.** Not to argue — to illuminate.
+
+---
+
+## How It Works
+
+```
+Community Discussion
+        ↓
+   Claude AI Pipeline
+   (analyze · cluster · position · connect)
+        ↓
+   3D Constellation
+        ↕
+   You explore it
+   swipe · gaze · orbit
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Three modes, one fluid experience:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+**READ** — Swipeable argument cards. Right = agree. Left = disagree. Up = flip to the opposing perspective. Down = trace the logical ancestry.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**MAP** — 3D constellation. Posts are stars. Clusters are galaxies. Edges are gravitational relationships between arguments.
+
+**PERCEIVE** — Webcam gaze + face tracking. The interface detects where your eyes fixate, when your brow furrows, when you nod involuntarily. Gaze enhances — it never gates.
+
+---
+
+## AI Architecture
+
+COSMOS runs a **multi-agent orchestration** powered by Claude:
+
+| Agent | Role |
+|-------|------|
+| **Cartographer** | Analyzes each post — stance, emotion, assumptions, logical chains |
+| **Architect** | Computes spatial layout — clusters, positions, relationships |
+| **Narrator** | AI guide that answers questions about the discussion in context |
+| **Classifier** | Real-time classification of user-submitted posts |
+| **Generator** | Synthesizes discussion content from community topics |
+
+The **anti-echo-chamber engine** rewires what you see next based on how you swipe:
+
+| You swipe... | Next card is... |
+|-------------|----------------|
+| Agree (→) | Strongest counterargument |
+| Disagree (←) | Someone who agrees with what you rejected |
+| Flip (↑) | Post from the opposing cluster |
+| Deeper (↓) | Logical parent in the argument chain |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Three.js (R3F), Framer Motion, Tailwind v4 |
+| Backend | Express 5, Claude API (Anthropic SDK) |
+| 3D Engine | @react-three/fiber, @react-three/drei |
+| Perception | WebGazer.js, MediaPipe FaceMesh, @use-gesture |
+| Infra | Vite 7, TypeScript 5.9, Firebase |
+
+---
+
+## Quick Start
+
+```bash
+npm install
+cp .env.example .env   # add your ANTHROPIC_API_KEY
+npm run dev
 ```
+
+---
+
+## Built At
+
+Built in 3 days at the **Anthropic Opus 4.6 Hackathon** — February 2026.
+
+By **Rae**.
+
+---
+
+MIT License
