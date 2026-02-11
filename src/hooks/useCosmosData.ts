@@ -7,6 +7,9 @@ interface CosmosDataReturn {
   progress: { stage: string; percent: number }
   error: string | null
   processUrl: (url: string) => void
+  setLayout: (layout: CosmosLayout | null) => void
+  setIsLoading: (loading: boolean) => void
+  setProgress: (progress: { stage: string; percent: number }) => void
 }
 
 /**
@@ -142,5 +145,8 @@ export default function useCosmosData(): CosmosDataReturn {
     progress,
     error,
     processUrl,
+    setLayout,
+    setIsLoading,
+    setProgress,
   }
 }

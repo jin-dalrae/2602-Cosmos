@@ -1,22 +1,23 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useCosmosData from './hooks/useCosmosData'
 import CosmosExperience from './components/CosmosExperience'
 import LoadingCosmos from './components/UI/LoadingCosmos'
+import { DEMO_LAYOUT, DEMO_URL } from './lib/demoData'
 
 type AppState = 'landing' | 'loading' | 'experience'
 
 const SAMPLE_LINKS = [
   {
-    label: 'Is remote work better for productivity?',
+    label: 'Should AI be regulated? (demo)',
+    url: DEMO_URL,
+  },
+  {
+    label: 'Is remote work better for productivity? (requires API)',
     url: 'https://www.reddit.com/r/technology/comments/1example1/is_remote_work_better_for_productivity/',
   },
   {
-    label: 'The future of AI in education',
-    url: 'https://www.reddit.com/r/artificial/comments/1example2/the_future_of_ai_in_education/',
-  },
-  {
-    label: 'Should cities ban cars from downtown?',
+    label: 'Should cities ban cars from downtown? (requires API)',
     url: 'https://www.reddit.com/r/urbanplanning/comments/1example3/should_cities_ban_cars_from_downtown/',
   },
 ]
@@ -24,15 +25,40 @@ const SAMPLE_LINKS = [
 export default function App() {
   const [appState, setAppState] = useState<AppState>('landing')
   const [urlInput, setUrlInput] = useState('')
-  const { layout, isLoading, progress, error, processUrl } = useCosmosData()
+  const { layout, isLoading, progress, error, processUrl, setLayout, setIsLoading, setProgress } =
+    useCosmosData()
+
+  // Ref to track demo loading timeout so we can clean up
+  const demoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleExplore = useCallback(
     (url: string) => {
       if (!url.trim()) return
       setAppState('loading')
+
+      // Demo URL — skip API, load pre-cached data with simulated delay
+      if (url.trim() === DEMO_URL) {
+        setIsLoading(true)
+        setProgress({ stage: 'Loading demo cosmos...', percent: 30 })
+
+        // Simulate progress stages
+        demoTimeoutRef.current = setTimeout(() => {
+          setProgress({ stage: 'Arranging constellations...', percent: 70 })
+        }, 600)
+
+        demoTimeoutRef.current = setTimeout(() => {
+          setProgress({ stage: 'Ready', percent: 100 })
+          setLayout(DEMO_LAYOUT)
+          setIsLoading(false)
+        }, 1500)
+
+        return
+      }
+
+      // Real API flow
       processUrl(url.trim())
     },
-    [processUrl],
+    [processUrl, setLayout, setIsLoading, setProgress],
   )
 
   const handleSubmit = useCallback(
@@ -44,6 +70,11 @@ export default function App() {
   )
 
   const handleBack = useCallback(() => {
+    // Clean up any pending demo timeout
+    if (demoTimeoutRef.current) {
+      clearTimeout(demoTimeoutRef.current)
+      demoTimeoutRef.current = null
+    }
     setAppState('landing')
     setUrlInput('')
   }, [])

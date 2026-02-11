@@ -37,7 +37,17 @@ export default function CosmosExperience({ layout }: CosmosExperienceProps) {
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
 
   // Camera / gaze state machine
-  const [cameraPhase, setCameraPhase] = useState<CameraPhase>('consent')
+  // Check if camera was previously declined in this session to skip consent
+  const [cameraPhase, setCameraPhase] = useState<CameraPhase>(() => {
+    try {
+      if (sessionStorage.getItem('cosmos_camera_declined') === 'true') {
+        return 'declined'
+      }
+    } catch {
+      // sessionStorage not available — proceed normally
+    }
+    return 'consent'
+  })
 
   // Gaze tracking
   const {
@@ -125,11 +135,26 @@ export default function CosmosExperience({ layout }: CosmosExperienceProps) {
 
   // Camera consent handlers
   const handleCameraAccept = useCallback(async () => {
-    await startGaze()
-    setCameraPhase('calibration')
+    try {
+      await startGaze()
+      setCameraPhase('calibration')
+    } catch {
+      // Webcam denied at the browser level — treat as declined
+      try {
+        sessionStorage.setItem('cosmos_camera_declined', 'true')
+      } catch {
+        // ignore
+      }
+      setCameraPhase('declined')
+    }
   }, [startGaze])
 
   const handleCameraDecline = useCallback(() => {
+    try {
+      sessionStorage.setItem('cosmos_camera_declined', 'true')
+    } catch {
+      // ignore
+    }
     setCameraPhase('declined')
   }, [])
 
@@ -174,6 +199,53 @@ export default function CosmosExperience({ layout }: CosmosExperienceProps) {
 
   // Show the experience content (after consent flow)
   const showExperience = cameraPhase === 'active' || cameraPhase === 'declined'
+
+  // Mode indicator label
+  const blendPercent = Math.round(blend * 100)
+  const modeLabel = blend < 0.5 ? 'READ' : 'MAP'
+
+  // ═══ Edge case: empty posts ═══
+  if (layout.posts.length === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center w-full h-full"
+        style={{
+          background: 'linear-gradient(180deg, #262220 0%, #1C1A18 100%)',
+        }}
+      >
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: '#9E9589',
+            boxShadow: '0 0 12px rgba(158, 149, 137, 0.3)',
+            marginBottom: 24,
+          }}
+        />
+        <p
+          style={{
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: 18,
+            color: '#F5F2EF',
+            letterSpacing: 0.5,
+            marginBottom: 8,
+          }}
+        >
+          No posts found in this discussion
+        </p>
+        <p
+          style={{
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: 13,
+            color: '#6B6560',
+          }}
+        >
+          The thread may be empty or inaccessible
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -349,6 +421,34 @@ export default function CosmosExperience({ layout }: CosmosExperienceProps) {
             >
               Map
             </button>
+          </div>
+
+          {/* Mode indicator pill (below toggle buttons) */}
+          <div
+            className="absolute left-1/2"
+            style={{
+              bottom: 8,
+              transform: 'translateX(-50%)',
+              zIndex: 50,
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                padding: '3px 10px',
+                borderRadius: 10,
+                backgroundColor: 'rgba(58, 53, 48, 0.6)',
+                backdropFilter: 'blur(6px)',
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 10,
+                color: '#6B6560',
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {modeLabel} {blendPercent}%
+            </div>
           </div>
 
           {/* Transition indicator */}
