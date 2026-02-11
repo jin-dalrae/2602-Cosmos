@@ -1,4 +1,9 @@
+// A9: SSE streaming endpoint — wires up orchestrator with cache
+
 import type { Request, Response } from 'express'
+import { processDiscussion } from '../../src/lib/orchestrator.js'
+import { getCached, setCached } from '../../src/lib/cache.js'
+import type { ProgressEvent } from '../../src/lib/types.js'
 
 export async function processRoute(req: Request, res: Response) {
   const { url } = req.body
@@ -18,12 +23,49 @@ export async function processRoute(req: Request, res: Response) {
   }
 
   try {
-    // TODO: Wire up orchestrator pipeline
-    sendEvent({ stage: 'Fetching discussion...', percent: 10 })
-    sendEvent({ stage: 'Pipeline not yet implemented', percent: 100, error: true })
+    // Check cache first
+    sendEvent({ stage: 'Checking cache...', percent: 2 })
+    const cached = await getCached(url)
+
+    if (cached) {
+      sendEvent({ stage: 'Found cached layout', percent: 50 })
+      sendEvent({
+        stage: 'COSMOS ready (cached)',
+        percent: 100,
+        layout: cached,
+      })
+      res.end()
+      return
+    }
+
+    // Run the full pipeline with progress streaming
+    const onProgress = (event: ProgressEvent) => {
+      sendEvent({
+        stage: event.stage,
+        percent: event.percent,
+        detail: event.detail,
+      })
+    }
+
+    const layout = await processDiscussion(url, onProgress)
+
+    // Cache the result (fire and forget)
+    setCached(url, layout).catch((err) =>
+      console.warn('[Process] Cache write failed:', err)
+    )
+
+    // Send the final layout
+    sendEvent({
+      stage: 'COSMOS ready',
+      percent: 100,
+      layout,
+    })
+
     res.end()
   } catch (error) {
-    sendEvent({ stage: 'Error', percent: 0, error: String(error) })
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[Process] Pipeline error:', message)
+    sendEvent({ stage: 'Error', percent: 0, error: message })
     res.end()
   }
 }
