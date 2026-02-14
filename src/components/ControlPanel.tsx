@@ -1,21 +1,19 @@
 import { useState } from 'react'
 
 export interface SceneSettings {
-  spreadScale: number   // multiplier for post positions
-  edgeOpacity: number   // 0–1
-  fov: number           // camera field of view
-  damping: number       // orbit controls damping factor
-  cameraDistance: number // initial Z distance
-  nearbyCount: number   // how many nearby cards to show
+  edgeOpacity: number      // 0–1
+  fov: number              // camera field of view
+  damping: number          // orbit controls damping factor
+  nearbyCount: number      // how many nearby cards to show
+  cameraDistance: number   // gap between inner camera sphere and outer article sphere
 }
 
 export const DEFAULT_SETTINGS: SceneSettings = {
-  spreadScale: 10,
   edgeOpacity: 0.08,
-  fov: 10,
+  fov: 60,
   damping: 0.05,
-  cameraDistance: 10,
   nearbyCount: 15,
+  cameraDistance: 10,
 }
 
 interface ControlPanelProps {
@@ -100,15 +98,15 @@ export default function ControlPanel({ settings, onChange }: ControlPanelProps) 
 
           <Slider
             label="Camera Distance"
-            value={settings.fov}
-            min={5} max={20} step={1}
-            onChange={(v) => update('fov', v)}
+            value={settings.cameraDistance}
+            min={2} max={18} step={0.5}
+            onChange={(v) => update('cameraDistance', v)}
           />
           <Slider
             label="Field of View"
-            value={settings.cameraDistance}
-            min={5} max={20} step={1}
-            onChange={(v) => update('cameraDistance', v)}
+            value={settings.fov}
+            min={30} max={100} step={1}
+            onChange={(v) => update('fov', v)}
           />
           <Slider
             label="Damping"

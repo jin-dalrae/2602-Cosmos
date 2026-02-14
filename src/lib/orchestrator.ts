@@ -70,9 +70,41 @@ function isUrl(input: string): boolean {
  * Process a discussion — from a Reddit URL or a topic string.
  * If a Reddit URL is provided but fetching fails, falls back to AI-generated discussion.
  */
+// Sphere layout constants
+const RADIUS_MIN = 16  // newest posts (closest to user at center)
+const RADIUS_MAX = 24  // oldest posts (furthest from user)
+
+/**
+ * Convert spherical coords (theta in radians, phi in radians, radius) to cartesian [x, y, z].
+ */
+function sphericalToCartesian(theta: number, phi: number, r: number): [number, number, number] {
+  return [
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta),
+  ]
+}
+
+/**
+ * Generate N points uniformly distributed on a sphere using the Fibonacci spiral.
+ * Returns array of { theta, phi } in radians.
+ */
+function fibonacciSphere(n: number): { theta: number; phi: number }[] {
+  const golden = Math.PI * (3 - Math.sqrt(5)) // golden angle
+  const points: { theta: number; phi: number }[] = []
+  for (let i = 0; i < n; i++) {
+    const y = 1 - (2 * i) / (n - 1 || 1) // -1 to 1
+    const theta = golden * i
+    const phi = Math.acos(Math.max(-1, Math.min(1, y)))
+    points.push({ theta, phi })
+  }
+  return points
+}
+
 /**
  * Build a rough CosmosLayout from enriched posts using embedding_hint values.
  * Used for partial/incremental rendering before the architect runs.
+ * Posts are placed on a sphere: surface position from semantic hints, radius from age (index order).
  */
 function buildPartialLayout(
   enrichedPosts: EnrichedPost[],
@@ -81,14 +113,14 @@ function buildPartialLayout(
   labels: Labels,
   startTime: number
 ): CosmosLayout {
-  const SCALE = 3
-  const cosmosPosts: CosmosPost[] = enrichedPosts.map((post) => {
-    const hint = post.embedding_hint
-    const position: [number, number, number] = [
-      hint.opinion_axis * SCALE + (Math.random() - 0.5) * 0.6,
-      hint.abstraction * SCALE + (Math.random() - 0.5) * 0.6,
-      hint.novelty * SCALE + (Math.random() - 0.5) * 0.6,
-    ]
+  const total = enrichedPosts.length
+  const fibs = fibonacciSphere(total)
+  const cosmosPosts: CosmosPost[] = enrichedPosts.map((post, index) => {
+    const { theta, phi } = fibs[index]
+    // Age-based radius: earlier index = older = further from user
+    const ageRatio = total > 1 ? index / (total - 1) : 0.5
+    const r = RADIUS_MIN + ageRatio * (RADIUS_MAX - RADIUS_MIN)
+    const position = sphericalToCartesian(theta, phi, r)
     return { ...post, position }
   })
 
@@ -227,28 +259,35 @@ export async function processDiscussion(
   progress('Layout computed', 85, `${architectResult.clusters.length} clusters`)
 
   // ── Step 4: Merge ──
+  // Convert architect's spherical [theta_deg, phi_deg, r_offset] → cartesian
+  // Radius is determined by post age (index order), with architect's r_offset as fine-tuning
   progress('Assembling COSMOS...', 90)
 
-  const SCALE = 0.6
-  const cosmosPosts: CosmosPost[] = allEnriched.map((post) => {
-    const p = architectResult.refined_positions[post.id]
-    const position: [number, number, number] = p
-      ? [p[0] * SCALE, p[1] * SCALE, p[2] * SCALE]
-      : [0, 0, 0]
+  const totalPosts = allEnriched.length
+  const finalFibs = fibonacciSphere(totalPosts)
+  const cosmosPosts: CosmosPost[] = allEnriched.map((post, index) => {
+    const { theta, phi } = finalFibs[index]
+    const ageRatio = totalPosts > 1 ? index / (totalPosts - 1) : 0.5
+    const r = RADIUS_MIN + ageRatio * (RADIUS_MAX - RADIUS_MIN)
+    const position = sphericalToCartesian(theta, phi, r)
     return { ...post, position }
   })
 
+  // Convert cluster centers and gap positions from spherical to cartesian
+  const RADIUS_MID = (RADIUS_MIN + RADIUS_MAX) / 2
   const layout: CosmosLayout = {
     topic,
     source: input,
-    clusters: architectResult.clusters.map((c) => ({
-      ...c,
-      center: [c.center[0] * SCALE, c.center[1] * SCALE, c.center[2] * SCALE] as [number, number, number],
-    })),
-    gaps: architectResult.gaps.map((g) => ({
-      ...g,
-      position: [g.position[0] * SCALE, g.position[1] * SCALE, g.position[2] * SCALE] as [number, number, number],
-    })),
+    clusters: architectResult.clusters.map((c) => {
+      const thetaRad = (c.center[0] * Math.PI) / 180
+      const phiRad = (c.center[1] * Math.PI) / 180
+      return { ...c, center: sphericalToCartesian(thetaRad, phiRad, RADIUS_MID) }
+    }),
+    gaps: architectResult.gaps.map((g) => {
+      const thetaRad = (g.position[0] * Math.PI) / 180
+      const phiRad = (g.position[1] * Math.PI) / 180
+      return { ...g, position: sphericalToCartesian(thetaRad, phiRad, RADIUS_MID) }
+    }),
     posts: cosmosPosts,
     bridge_posts: architectResult.bridge_posts,
     spatial_summary: architectResult.spatial_summary,

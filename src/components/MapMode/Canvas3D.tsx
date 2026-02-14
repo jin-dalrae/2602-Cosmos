@@ -1,8 +1,11 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useCallback } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
+import { PerspectiveCamera } from '@react-three/drei'
 import type { SceneSettings } from '../ControlPanel'
 import * as THREE from 'three'
+
+// Average radius of the outer article sphere
+const ARTICLE_RADIUS = 20
 
 interface Canvas3DProps {
   children: ReactNode
@@ -27,89 +30,122 @@ function CameraUpdater({ fov }: { fov: number }) {
   return null
 }
 
-function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect, recenter, distance }: {
+function FovZoom({ fov, onFovChange }: { fov: number; onFovChange: (fov: number) => void }) {
+  const { gl, camera } = useThree()
+  const fovRef = useRef(fov)
+  fovRef.current = fov
+
+  useEffect(() => {
+    const canvas = gl.domElement
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY * 0.05
+      const newFov = THREE.MathUtils.clamp(fovRef.current + delta, 30, 100)
+      if (newFov !== fovRef.current) {
+        onFovChange(newFov)
+        const cam = camera as THREE.PerspectiveCamera
+        cam.fov = newFov
+        cam.updateProjectionMatrix()
+      }
+    }
+    canvas.addEventListener('wheel', handler, { passive: false })
+    return () => canvas.removeEventListener('wheel', handler)
+  }, [gl, camera, onFovChange])
+
+  return null
+}
+
+/**
+ * Custom camera controller: camera lives on inner sphere, looks OUTWARD toward articles.
+ * Replaces OrbitControls (which always looks toward its target = inward).
+ * Drag rotates the camera's position on the inner sphere surface.
+ */
+function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect, recenter, cameraDistance }: {
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
   damping?: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
   recenter?: number
-  distance?: number
+  cameraDistance: number
 }) {
-  const { camera } = useThree()
-  const controlsRef = useRef<any>(null)
+  const { camera, gl } = useThree()
   const callbackRef = useRef(onOrbitEnd)
   callbackRef.current = onOrbitEnd
 
-  const goalSpherical = useRef(new THREE.Spherical())
-  const currentSpherical = useRef(new THREE.Spherical())
+  const innerRadius = ARTICLE_RADIUS - cameraDistance
+
+  // Camera spherical position (theta = azimuth, phi = polar angle)
+  const spherical = useRef({ theta: 0, phi: Math.PI / 2 })
+  // Velocity for damping
+  const velocity = useRef({ theta: 0, phi: 0 })
+  // Drag state
+  const dragging = useRef(false)
+  const lastPointer = useRef({ x: 0, y: 0 })
+
+  // Focus animation
+  const goalSpherical = useRef({ theta: 0, phi: Math.PI / 2 })
   const animating = useRef(false)
 
-  // When focusTarget changes, compute where camera should be so card is centered
-  // Orbit target stays at (0,0,0) — camera rotates around it
+  // Smooth radius interpolation
+  const targetRadius = useRef(innerRadius)
+  useEffect(() => { targetRadius.current = innerRadius }, [innerRadius])
+
+  // When focusTarget changes, animate camera to face the card
   useEffect(() => {
-    if (focusTarget) {
-      const cardPos = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2])
-      const orbitRadius = camera.position.length() // distance from origin
+    if (!focusTarget) return
+    const cardPos = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2])
+    if (cardPos.length() < 0.001) return
 
-      const goalPos = new THREE.Vector3()
-      if (cardPos.length() > 0.001) {
-        goalPos.copy(cardPos).normalize().multiplyScalar(orbitRadius)
-      } else {
-        goalPos.set(0, 0, orbitRadius)
-      }
-      goalSpherical.current.setFromVector3(goalPos)
-      currentSpherical.current.setFromVector3(camera.position)
-      animating.current = true
-    }
-  }, [focusTarget, camera])
+    // Camera should be on inner sphere in the same direction as the card
+    const s = new THREE.Spherical().setFromVector3(cardPos)
+    goalSpherical.current = { theta: s.theta, phi: s.phi }
+    animating.current = true
+  }, [focusTarget])
 
-  // Recenter: animate camera to front-center at the given distance
+  // Recenter
   const prevRecenter = useRef(recenter ?? 0)
   useEffect(() => {
     if (recenter !== undefined && recenter !== prevRecenter.current) {
       prevRecenter.current = recenter
-      const r = distance ?? camera.position.length()
-      goalSpherical.current.set(r, Math.PI / 2, 0) // front center (0, 0, r)
-      currentSpherical.current.setFromVector3(camera.position)
+      goalSpherical.current = { theta: 0, phi: Math.PI / 2 }
       animating.current = true
     }
-  }, [recenter, distance, camera])
+  }, [recenter])
 
-  useFrame(() => {
-    const controls = controlsRef.current
-    if (!controls || !animating.current) return
+  // Pointer event handlers for drag rotation
+  useEffect(() => {
+    const canvas = gl.domElement
 
-    // Spherical interpolation for a smooth arc around the origin
-    const t = 0.08
-    currentSpherical.current.phi += (goalSpherical.current.phi - currentSpherical.current.phi) * t
-    currentSpherical.current.theta += (goalSpherical.current.theta - currentSpherical.current.theta) * t
-    currentSpherical.current.radius += (goalSpherical.current.radius - currentSpherical.current.radius) * t
-
-    camera.position.setFromSpherical(currentSpherical.current)
-    controls.update()
-
-    const dPhi = Math.abs(goalSpherical.current.phi - currentSpherical.current.phi)
-    const dTheta = Math.abs(goalSpherical.current.theta - currentSpherical.current.theta)
-    if (dPhi < 0.001 && dTheta < 0.001) {
+    const onDown = (e: PointerEvent) => {
+      dragging.current = true
+      lastPointer.current = { x: e.clientX, y: e.clientY }
+      velocity.current = { theta: 0, phi: 0 }
       animating.current = false
     }
-  })
 
-  // When user starts orbiting, stop centering animation
-  useEffect(() => {
-    const controls = controlsRef.current
-    if (!controls) return
-    const stopAnim = () => { animating.current = false }
-    controls.addEventListener('start', stopAnim)
-    return () => controls.removeEventListener('start', stopAnim)
-  }, [])
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current) return
+      const dx = e.clientX - lastPointer.current.x
+      const dy = e.clientY - lastPointer.current.y
+      lastPointer.current = { x: e.clientX, y: e.clientY }
 
-  // OrbitControls 'end' event
-  useEffect(() => {
-    const controls = controlsRef.current
-    if (!controls) return
+      // Rotate on inner sphere: dx → theta (azimuth), dy → phi (polar)
+      const speed = 0.004
+      velocity.current.theta = -dx * speed
+      velocity.current.phi = dy * speed
 
-    const handler = () => {
+      spherical.current.theta += velocity.current.theta
+      spherical.current.phi = THREE.MathUtils.clamp(
+        spherical.current.phi + velocity.current.phi,
+        0.3, Math.PI - 0.3,
+      )
+    }
+
+    const onUp = () => {
+      if (!dragging.current) return
+      dragging.current = false
+
+      // Report camera position and look direction
       const dir = new THREE.Vector3()
       camera.getWorldDirection(dir)
       callbackRef.current?.(
@@ -118,14 +154,19 @@ function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
       )
     }
 
-    controls.addEventListener('end', handler)
-    return () => controls.removeEventListener('end', handler)
-  }, [camera])
+    canvas.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [gl, camera])
 
-  // Fallback: when pendingAutoSelect flips true, wait for next pointerup then report camera pos
+  // Fallback: when pendingAutoSelect flips true, report camera after pointerup
   useEffect(() => {
     if (!pendingAutoSelect) return
-
     const handler = () => {
       setTimeout(() => {
         const dir = new THREE.Vector3()
@@ -136,28 +177,76 @@ function OrbitHandler({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
         )
       }, 100)
     }
-
     window.addEventListener('pointerup', handler, { once: true })
     return () => window.removeEventListener('pointerup', handler)
   }, [pendingAutoSelect, camera])
 
-  return (
-    <OrbitControls
-      ref={controlsRef}
-      enableDamping={damping > 0}
-      dampingFactor={damping}
-      minDistance={2}
-      maxDistance={60}
-    />
-  )
+  // Every frame: update camera position on inner sphere + look outward
+  useFrame(() => {
+    // Focus animation
+    if (animating.current) {
+      const t = 0.08
+      // Shortest-path theta interpolation
+      let dTheta = goalSpherical.current.theta - spherical.current.theta
+      // Wrap to [-π, π]
+      while (dTheta > Math.PI) dTheta -= Math.PI * 2
+      while (dTheta < -Math.PI) dTheta += Math.PI * 2
+      spherical.current.theta += dTheta * t
+      spherical.current.phi += (goalSpherical.current.phi - spherical.current.phi) * t
+
+      if (Math.abs(dTheta) < 0.001 && Math.abs(goalSpherical.current.phi - spherical.current.phi) < 0.001) {
+        animating.current = false
+      }
+    }
+
+    // Apply damping when not dragging
+    if (!dragging.current && damping > 0) {
+      const decay = 1 - damping * 2
+      velocity.current.theta *= decay
+      velocity.current.phi *= decay
+      if (Math.abs(velocity.current.theta) > 0.0001 || Math.abs(velocity.current.phi) > 0.0001) {
+        spherical.current.theta += velocity.current.theta
+        spherical.current.phi = THREE.MathUtils.clamp(
+          spherical.current.phi + velocity.current.phi,
+          0.3, Math.PI - 0.3,
+        )
+      }
+    }
+
+    // Smooth radius transition
+    const currentRadius = camera.position.length() || targetRadius.current
+    const r = currentRadius + (targetRadius.current - currentRadius) * 0.1
+
+    // Set camera position on inner sphere
+    const s = new THREE.Spherical(r, spherical.current.phi, spherical.current.theta)
+    camera.position.setFromSpherical(s)
+
+    // Look outward: toward corresponding point on the outer sphere
+    const outward = camera.position.clone().normalize().multiplyScalar(ARTICLE_RADIUS * 2)
+    camera.lookAt(outward)
+  })
+
+  return null
 }
 
 export default function Canvas3D({ children, settings, focusTarget, pendingAutoSelect, recenter, onOrbitEnd }: Canvas3DProps) {
+  const innerRadius = ARTICLE_RADIUS - settings.cameraDistance
+
+  const handleFovChange = useCallback((_newFov: number) => {}, [])
+
   return (
     <Canvas style={{ background: '#262220' }}>
-      <PerspectiveCamera makeDefault fov={settings.fov} position={[0, 0, settings.cameraDistance]} />
+      <PerspectiveCamera makeDefault fov={settings.fov} position={[0, 0, innerRadius]} />
       <CameraUpdater fov={settings.fov} />
-      <OrbitHandler onOrbitEnd={onOrbitEnd} damping={settings.damping} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} recenter={recenter} distance={settings.cameraDistance} />
+      <FovZoom fov={settings.fov} onFovChange={handleFovChange} />
+      <SphereCamera
+        onOrbitEnd={onOrbitEnd}
+        damping={settings.damping}
+        focusTarget={focusTarget}
+        pendingAutoSelect={pendingAutoSelect}
+        recenter={recenter}
+        cameraDistance={settings.cameraDistance}
+      />
 
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 5, 5]} intensity={0.4} />

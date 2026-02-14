@@ -23,17 +23,43 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Parse JSON from a model response, stripping markdown fences if present.
+ * Attempts to recover truncated JSON arrays by finding the last complete object.
  */
 export function parseJSON<T>(text: string): T {
   // Strip markdown code fences
   let cleaned = text.trim()
   if (cleaned.startsWith('```')) {
-    // Remove opening fence (possibly with language tag)
     cleaned = cleaned.replace(/^```[\w]*\n?/, '')
-    // Remove closing fence
     cleaned = cleaned.replace(/\n?```\s*$/, '')
   }
-  return JSON.parse(cleaned) as T
+  cleaned = cleaned.trim()
+
+  try {
+    return JSON.parse(cleaned) as T
+  } catch {
+    // Attempt to recover truncated JSON arrays
+    if (cleaned.startsWith('[')) {
+      console.warn('[parseJSON] Attempting truncated JSON array recovery...')
+      // Find the last complete object boundary: "}," or "}" followed by possible whitespace
+      const lastCompleteObj = cleaned.lastIndexOf('},')
+      const lastObj = cleaned.lastIndexOf('}')
+      const cutPoint = lastCompleteObj > 0 ? lastCompleteObj + 1 : lastObj > 0 ? lastObj + 1 : -1
+
+      if (cutPoint > 1) {
+        const repaired = cleaned.slice(0, cutPoint) + ']'
+        try {
+          const result = JSON.parse(repaired) as T
+          const count = Array.isArray(result) ? result.length : '?'
+          console.log(`[parseJSON] Recovered ${count} items from truncated array`)
+          return result
+        } catch (e2) {
+          console.error('[parseJSON] Recovery also failed:', e2)
+        }
+      }
+    }
+    // Re-throw original error if recovery fails
+    throw new Error(`JSON parse failed (length=${cleaned.length}): ${cleaned.slice(0, 100)}...`)
+  }
 }
 
 /**
@@ -62,6 +88,11 @@ export async function callOpus({
           },
         ],
       })
+
+      // Warn if response was truncated
+      if (response.stop_reason === 'max_tokens') {
+        console.warn(`[Opus] Response truncated (hit max_tokens=${maxTokens}). Output may be incomplete.`)
+      }
 
       // Extract text content
       const textBlock = response.content.find((block) => block.type === 'text')

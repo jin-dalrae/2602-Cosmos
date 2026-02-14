@@ -2,11 +2,12 @@ import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-const PARTICLE_COUNT = 200
-const SPREAD = 15
-const POINT_SIZE = 0.05
-const POINT_OPACITY = 0.3
-const ROTATION_SPEED = 0.0002
+const PARTICLE_COUNT = 300
+const RADIUS_MIN = 26   // just beyond the outermost cards
+const RADIUS_MAX = 32   // background star field
+const POINT_SIZE = 0.08
+const POINT_OPACITY = 0.25
+const ROTATION_SPEED = 0.00015
 
 // Warm dust colors
 const COLOR_GOLD = new THREE.Color('#D4B872')
@@ -25,10 +26,13 @@ export default function AmbientDust() {
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3
 
-      // Random position in [-SPREAD, SPREAD] cube
-      posArray[i3] = (Math.random() - 0.5) * 2 * SPREAD
-      posArray[i3 + 1] = (Math.random() - 0.5) * 2 * SPREAD
-      posArray[i3 + 2] = (Math.random() - 0.5) * 2 * SPREAD
+      // Random position on sphere surface (background stars on the dome)
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1) // uniform distribution on sphere
+      const r = RADIUS_MIN + Math.random() * (RADIUS_MAX - RADIUS_MIN)
+      posArray[i3] = r * Math.sin(phi) * Math.cos(theta)
+      posArray[i3 + 1] = r * Math.cos(phi)
+      posArray[i3 + 2] = r * Math.sin(phi) * Math.sin(theta)
 
       // Random mix of gold and cream
       const t = Math.random()

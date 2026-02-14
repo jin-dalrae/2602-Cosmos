@@ -16,8 +16,12 @@ interface CosmosExperienceProps {
 }
 
 export default function CosmosExperience({ layout, isRefining }: CosmosExperienceProps) {
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [posts, setPosts] = useState<CosmosPost[]>(() => [...layout.posts])
+  // Select a random post on first load
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(() => {
+    if (layout.posts.length === 0) return null
+    return layout.posts[Math.floor(Math.random() * layout.posts.length)].id
+  })
 
   // Sync incoming layout updates (new batches / architect refinement)
   useEffect(() => {
@@ -60,15 +64,8 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }, 400)
   }, [])
 
-  // Apply spread scale to post positions
-  const scaledPosts = useMemo(() => {
-    if (sceneSettings.spreadScale === 1) return posts
-    const s = sceneSettings.spreadScale
-    return posts.map((p) => ({
-      ...p,
-      position: [p.position[0] * s, p.position[1] * s, p.position[2] * s] as [number, number, number],
-    }))
-  }, [posts, sceneSettings.spreadScale])
+  // Posts are already positioned on the sphere by the orchestrator — no scaling needed
+  const scaledPosts = posts
 
   const postMap = useMemo(() => {
     const map = new Map<string, CosmosPost>()
@@ -109,11 +106,13 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       anchor = lastAnchor.current
     }
 
+    // Use angular distance (1 - dot product of normalized directions) for sphere-surface proximity
+    const anchorLen = Math.sqrt(anchor[0] ** 2 + anchor[1] ** 2 + anchor[2] ** 2) || 1
+    const ax = anchor[0] / anchorLen, ay = anchor[1] / anchorLen, az = anchor[2] / anchorLen
     const withDist = scaledPosts.map((p) => {
-      const dx = p.position[0] - anchor[0]
-      const dy = p.position[1] - anchor[1]
-      const dz = p.position[2] - anchor[2]
-      return { post: p, dist: dx * dx + dy * dy + dz * dz }
+      const pLen = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
+      const dot = (p.position[0] / pLen) * ax + (p.position[1] / pLen) * ay + (p.position[2] / pLen) * az
+      return { post: p, dist: 1 - dot } // 0 = same direction, 2 = opposite
     })
     withDist.sort((a, b) => a.dist - b.dist)
 
@@ -162,23 +161,22 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     setSelectedPostId(null)
   }, [selectedPostId])
 
-  const handleOrbitEnd = useCallback((cameraPos: [number, number, number]) => {
+  const handleOrbitEnd = useCallback((_cameraPos: [number, number, number], cameraDir: [number, number, number]) => {
     if (!pendingAutoSelectRef.current) return
     pendingAutoSelectRef.current = false
     setPendingAutoSelect(false)
 
-    // Find the nearest visible card to the camera (excluding the one we just closed)
+    // Find the card most aligned with camera's look direction (excluding the one we just closed)
     let bestId: string | null = null
-    let bestDist = Infinity
+    let bestAlignment = -Infinity
 
     for (const p of scaledPostsRef.current) {
       if (p.id === previousSelectedId.current) continue
-      const dx = p.position[0] - cameraPos[0]
-      const dy = p.position[1] - cameraPos[1]
-      const dz = p.position[2] - cameraPos[2]
-      const dist = dx * dx + dy * dy + dz * dz
-      if (dist < bestDist) {
-        bestDist = dist
+      const pLen = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
+      // Dot product of card direction with camera look direction
+      const dot = (p.position[0] / pLen) * cameraDir[0] + (p.position[1] / pLen) * cameraDir[1] + (p.position[2] / pLen) * cameraDir[2]
+      if (dot > bestAlignment) {
+        bestAlignment = dot
         bestId = p.id
       }
     }
@@ -350,116 +348,123 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             userVote={votes.get(post.id) ?? null}
             onReply={handleReply}
             onDragWhileSelected={selectedPostId === post.id ? handleDragWhileSelected : undefined}
-            cameraDistance={sceneSettings.cameraDistance}
+            cameraDistance={20}
           />
         ))}
         <EdgeNetwork posts={visiblePosts} opacity={sceneSettings.edgeOpacity} />
         <AmbientDust />
       </Canvas3D>
 
-      {/* Control panel */}
-      <ControlPanel settings={sceneSettings} onChange={handleSettingsChange} />
-
-      {/* Bottom-right actions */}
-      <div style={{
-        position: 'absolute', bottom: 20, right: 20, zIndex: 20,
-        display: 'flex', gap: 8, alignItems: 'center',
-      }}>
-        <Link
-          to="/list"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '12px 16px', borderRadius: 12,
-            border: '1px solid #3A3530',
-            backgroundColor: 'rgba(38, 34, 32, 0.85)',
-            backdropFilter: 'blur(8px)',
-            color: '#9E9589', fontSize: 13, fontWeight: 500,
-            fontFamily: 'system-ui, sans-serif',
-            textDecoration: 'none',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-          }}
-        >
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
-            <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
-          </svg>
-          List
-        </Link>
-        <button
-          onClick={() => setComposing({ type: 'post' })}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '12px 20px', borderRadius: 12,
-            border: 'none',
-            backgroundColor: '#D4B872',
-            color: '#1C1A18',
-            fontSize: 14,
-            fontWeight: 600,
-            fontFamily: 'system-ui, sans-serif',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-          }}
-        >
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New Post
-        </button>
-      </div>
-
-      {/* Compose overlay */}
-      {composing && (
-        <ComposeOverlay
-          mode={
-            composing.type === 'reply'
-              ? { type: 'reply', parentAuthor: postMap.get(composing.parentId)?.author ?? 'Unknown' }
-              : { type: 'post' }
-          }
-          onSubmit={handleComposeSubmit}
-          onCancel={() => setComposing(null)}
-        />
-      )}
-
-      {/* Refining indicator */}
-      {isRefining && (
-        <div className="absolute" style={{
-          top: 16, right: 16, zIndex: 20,
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '6px 14px', borderRadius: 8,
-          backgroundColor: 'rgba(38, 34, 32, 0.85)', backdropFilter: 'blur(8px)',
-          border: '1px solid #3A3530',
-          transition: 'right 0.3s ease',
-        }}>
-          <div style={{
-            width: 6, height: 6, borderRadius: '50%',
-            backgroundColor: '#D4B872',
-            animation: 'pulse 1.5s ease-in-out infinite',
-          }} />
-          <span style={{
-            fontFamily: 'system-ui', fontSize: 11, color: '#9E9589',
-          }}>
-            Loading more posts...
-          </span>
-          <style>{`@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+      {/* UI overlay layer — sits above the 3D canvas + card stacking context */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 10001, pointerEvents: 'none' }}>
+        {/* Control panel */}
+        <div style={{ pointerEvents: 'auto' }}>
+          <ControlPanel settings={sceneSettings} onChange={handleSettingsChange} />
         </div>
-      )}
 
-      {/* Hint — only when no post is selected */}
-      {!selectedPostId && (
-        <div className="absolute" style={{
-          bottom: 16, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 10, pointerEvents: 'none',
+        {/* Bottom-right actions */}
+        <div style={{
+          position: 'absolute', bottom: 20, right: 20,
+          display: 'flex', gap: 8, alignItems: 'center',
+          pointerEvents: 'auto',
         }}>
-          <div style={{
-            padding: '6px 14px', borderRadius: 8,
-            backgroundColor: 'rgba(38, 34, 32, 0.7)', backdropFilter: 'blur(8px)',
-            fontFamily: 'system-ui', fontSize: 11, color: '#6B6560',
-          }}>
-            Click a card to read &middot; Drag to orbit &middot; Scroll to zoom
+          <Link
+            to="/list"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '12px 16px', borderRadius: 12,
+              border: '1px solid #3A3530',
+              backgroundColor: 'rgba(38, 34, 32, 0.85)',
+              backdropFilter: 'blur(8px)',
+              color: '#9E9589', fontSize: 13, fontWeight: 500,
+              fontFamily: 'system-ui, sans-serif',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            List
+          </Link>
+          <button
+            onClick={() => setComposing({ type: 'post' })}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '12px 20px', borderRadius: 12,
+              border: 'none',
+              backgroundColor: '#D4B872',
+              color: '#1C1A18',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: 'system-ui, sans-serif',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Post
+          </button>
+        </div>
+
+        {/* Compose overlay */}
+        {composing && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <ComposeOverlay
+              mode={
+                composing.type === 'reply'
+                  ? { type: 'reply', parentAuthor: postMap.get(composing.parentId)?.author ?? 'Unknown' }
+                  : { type: 'post' }
+              }
+              onSubmit={handleComposeSubmit}
+              onCancel={() => setComposing(null)}
+            />
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Refining indicator */}
+        {isRefining && (
+          <div className="absolute" style={{
+            top: 16, right: 16,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 14px', borderRadius: 8,
+            backgroundColor: 'rgba(38, 34, 32, 0.85)', backdropFilter: 'blur(8px)',
+            border: '1px solid #3A3530',
+            transition: 'right 0.3s ease',
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              backgroundColor: '#D4B872',
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }} />
+            <span style={{
+              fontFamily: 'system-ui', fontSize: 11, color: '#9E9589',
+            }}>
+              Loading more posts...
+            </span>
+            <style>{`@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+          </div>
+        )}
+
+        {/* Hint — only when no post is selected */}
+        {!selectedPostId && (
+          <div className="absolute" style={{
+            bottom: 16, left: '50%', transform: 'translateX(-50%)',
+          }}>
+            <div style={{
+              padding: '6px 14px', borderRadius: 8,
+              backgroundColor: 'rgba(38, 34, 32, 0.7)', backdropFilter: 'blur(8px)',
+              fontFamily: 'system-ui', fontSize: 11, color: '#6B6560',
+            }}>
+              Click a card to read &middot; Drag to look around &middot; Scroll to zoom
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
