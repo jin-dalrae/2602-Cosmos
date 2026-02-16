@@ -7,6 +7,8 @@ import EdgeNetwork from './MapMode/EdgeNetwork'
 import AmbientDust from './MapMode/AmbientDust'
 import ComposeOverlay from './ComposeOverlay'
 import ControlPanel, { DEFAULT_SETTINGS, type SceneSettings } from './ControlPanel'
+import RandomArticleButton from './UI/RandomArticleButton'
+import MiniMap from './UI/MiniMap'
 
 type ComposingState = { type: 'post' } | { type: 'reply'; parentId: string } | null
 
@@ -51,21 +53,71 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const [votes, setVotes] = useState<Map<string, 'up' | 'down'>>(() => new Map())
   const [composing, setComposing] = useState<ComposingState>(null)
   const [sceneSettings, setSceneSettings] = useState<SceneSettings>(DEFAULT_SETTINGS)
-  const [recenter, setRecenter] = useState(0)
-  const recenterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track camera rotation for mini-map + visibility culling
+  // Use a ref for every-frame updates, throttle state updates to ~10fps
+  const [cameraRotation, setCameraRotation] = useState({ theta: 0, phi: Math.PI / 2 })
+  const cameraRotationRef = useRef({ theta: 0, phi: Math.PI / 2 })
+  const lastCameraUpdateRef = useRef(0)
 
   const handleSettingsChange = useCallback((next: SceneSettings) => {
     setSceneSettings(next)
-    setSelectedPostId(null)
-    // Debounce recenter — only fire after user stops adjusting for 400ms
-    if (recenterTimer.current) clearTimeout(recenterTimer.current)
-    recenterTimer.current = setTimeout(() => {
-      setRecenter((c) => c + 1)
-    }, 400)
   }, [])
 
-  // Posts are already positioned on the sphere by the orchestrator — no scaling needed
-  const scaledPosts = posts
+  // Normalize all posts to sit on the target sphere radius (150)
+  // then apply repulsion so no two posts are closer than ~25° apart
+  const SPHERE_RADIUS = 150
+  const scaledPosts = useMemo(() => {
+    const normalized = posts.map(p => {
+      const [x, y, z] = p.position
+      const len = Math.sqrt(x * x + y * y + z * z) || 1
+      return {
+        ...p,
+        position: [
+          (x / len) * SPHERE_RADIUS,
+          (y / len) * SPHERE_RADIUS,
+          (z / len) * SPHERE_RADIUS,
+        ] as [number, number, number],
+      }
+    })
+
+    // Repulsion: push apart any posts closer than minAngle on the sphere
+    const minAngle = 0.45 // ~25°
+    for (let iter = 0; iter < 15; iter++) {
+      for (let i = 0; i < normalized.length; i++) {
+        for (let j = i + 1; j < normalized.length; j++) {
+          const a = normalized[i].position
+          const b = normalized[j].position
+          const aLen = Math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2) || 1
+          const bLen = Math.sqrt(b[0] ** 2 + b[1] ** 2 + b[2] ** 2) || 1
+          const ax = a[0] / aLen, ay = a[1] / aLen, az = a[2] / aLen
+          const bx = b[0] / bLen, by = b[1] / bLen, bz = b[2] / bLen
+          const dot = ax * bx + ay * by + az * bz
+          const angle = Math.acos(Math.max(-1, Math.min(1, dot)))
+
+          if (angle < minAngle) {
+            const push = (minAngle - angle) * 0.5
+            // Tangent direction for pushing A away from B
+            const tx = ay * bz - az * by, ty = az * bx - ax * bz, tz = ax * by - ay * bx
+            const tLen = Math.sqrt(tx ** 2 + ty ** 2 + tz ** 2)
+            if (tLen < 0.0001) continue
+
+            const nx = tx / tLen, ny = ty / tLen, nz = tz / tLen
+            // Push A and B apart along tangent
+            const newAx = ax + nx * push, newAy = ay + ny * push, newAz = az + nz * push
+            const newBx = bx - nx * push, newBy = by - ny * push, newBz = bz - nz * push
+            // Re-normalize to sphere
+            const naLen = Math.sqrt(newAx ** 2 + newAy ** 2 + newAz ** 2) || 1
+            const nbLen = Math.sqrt(newBx ** 2 + newBy ** 2 + newBz ** 2) || 1
+            normalized[i] = { ...normalized[i], position: [newAx / naLen * SPHERE_RADIUS, newAy / naLen * SPHERE_RADIUS, newAz / naLen * SPHERE_RADIUS] }
+            normalized[j] = { ...normalized[j], position: [newBx / nbLen * SPHERE_RADIUS, newBy / nbLen * SPHERE_RADIUS, newBz / nbLen * SPHERE_RADIUS] }
+          }
+        }
+      }
+    }
+
+    return normalized
+  }, [posts])
 
   const postMap = useMemo(() => {
     const map = new Map<string, CosmosPost>()
@@ -88,44 +140,46 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     return p ? p.position : null
   }, [selectedPostId, scaledPostMap])
 
-  // ── Show only N nearby cards ──
-  const lastAnchor = useRef<[number, number, number]>([0, 0, 0])
+  // Visibility culling with fade zone:
+  //   0°–40°  → fully visible (opacity 1)
+  //   40°–60° → fade zone (opacity 1→0)
+  //   60°+    → not rendered at all
+  const cosInner = Math.cos(40 * Math.PI / 180) // ~0.766 — full opacity inside this
+  const cosOuter = Math.cos(60 * Math.PI / 180) // ~0.500 — not rendered beyond this
+  const fadeBand = cosInner - cosOuter // width of the fade zone
 
-  const visiblePosts = useMemo(() => {
-    const count = sceneSettings.nearbyCount
-    if (scaledPosts.length <= count) return scaledPosts
+  const visiblePostsWithOpacity = useMemo(() => {
+    const { theta, phi } = cameraRotation
+    const overview = sceneSettings.overview
+    const basePhi = Math.PI / 2 + (0.15 - Math.PI / 2) * overview
+    const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1,
+      basePhi + (phi - Math.PI / 2)
+    ))
+    const lookX = Math.sin(effectivePhi) * Math.cos(theta)
+    const lookY = Math.cos(effectivePhi)
+    const lookZ = Math.sin(effectivePhi) * Math.sin(theta)
 
-    // Anchor: selected post position, or keep last anchor during auto-navigate
-    let anchor: [number, number, number]
-    if (selectedPostId) {
-      const sel = scaledPostMap.get(selectedPostId)
-      anchor = sel ? sel.position : lastAnchor.current
-      lastAnchor.current = anchor
-    } else {
-      // Keep last anchor so cards don't jump during auto-navigate
-      anchor = lastAnchor.current
+    const result: { post: CosmosPost; visibility: number }[] = []
+    for (const p of scaledPosts) {
+      if (p.id === selectedPostId) {
+        result.push({ post: p, visibility: 1 })
+        continue
+      }
+      const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
+      const dot = (p.position[0] / len) * lookX + (p.position[1] / len) * lookY + (p.position[2] / len) * lookZ
+      if (dot < cosOuter) continue // beyond 60° — don't render
+      const visibility = dot >= cosInner ? 1 : (dot - cosOuter) / fadeBand
+      result.push({ post: p, visibility })
     }
-
-    // Use angular distance (1 - dot product of normalized directions) for sphere-surface proximity
-    const anchorLen = Math.sqrt(anchor[0] ** 2 + anchor[1] ** 2 + anchor[2] ** 2) || 1
-    const ax = anchor[0] / anchorLen, ay = anchor[1] / anchorLen, az = anchor[2] / anchorLen
-    const withDist = scaledPosts.map((p) => {
-      const pLen = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
-      const dot = (p.position[0] / pLen) * ax + (p.position[1] / pLen) * ay + (p.position[2] / pLen) * az
-      return { post: p, dist: 1 - dot } // 0 = same direction, 2 = opposite
-    })
-    withDist.sort((a, b) => a.dist - b.dist)
-
-    const result = withDist.slice(0, count).map((w) => w.post)
-
-    // Always include selected post
-    if (selectedPostId && !result.find((p) => p.id === selectedPostId)) {
-      const sel = scaledPostMap.get(selectedPostId)
-      if (sel) result.push(sel)
-    }
-
     return result
-  }, [scaledPosts, scaledPostMap, selectedPostId, sceneSettings.nearbyCount])
+  }, [scaledPosts, cameraRotation, sceneSettings.overview, selectedPostId, cosInner, cosOuter, fadeBand])
+
+  const visiblePosts = useMemo(() => visiblePostsWithOpacity.map(v => v.post), [visiblePostsWithOpacity])
+  const visibilityMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const v of visiblePostsWithOpacity) map.set(v.post.id, v.visibility)
+    return map
+  }, [visiblePostsWithOpacity])
 
   const relatedPosts = useMemo(() => {
     if (!selectedPost) return []
@@ -182,7 +236,8 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
 
     previousSelectedId.current = null
-    if (bestId) setSelectedPostId(bestId)
+    // Only auto-open if the nearest card is within ~5° of view center (dot > 0.996)
+    if (bestId && bestAlignment > 0.996) setSelectedPostId(bestId)
   }, [])
 
   const handleSelect = useCallback((postId: string) => {
@@ -194,6 +249,14 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     setPendingAutoSelect(false)
     setSelectedPostId(null)
   }, [])
+
+  // When user drags the canvas, close any open card and auto-select nearest after drag ends
+  const handleCanvasDragStart = useCallback(() => {
+    previousSelectedId.current = selectedPostId
+    pendingAutoSelectRef.current = true
+    setPendingAutoSelect(true)
+    setSelectedPostId(null)
+  }, [selectedPostId])
 
   // ── Vote handler ──
   const handleVote = useCallback((postId: string, dir: 'up' | 'down') => {
@@ -321,6 +384,49 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
   }, [composing, handleSubmitPost, handleSubmitReply])
 
+  // ── Random article ──
+  const handleRandomArticle = useCallback(() => {
+    if (posts.length === 0) return
+    const randomPost = posts[Math.floor(Math.random() * posts.length)]
+    setSelectedPostId(randomPost.id)
+  }, [posts])
+
+  // ── Mini-map navigation ──
+  const handleMiniMapNavigate = useCallback((theta: number, phi: number) => {
+    // We don't need to manually set camera rotation here, the camera's focus logic will handle it
+    // Create a dummy direction at the fixed sphere radius
+    const r = 150
+    const dummyPos: [number, number, number] = [
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.cos(phi),
+      r * Math.sin(phi) * Math.sin(theta),
+    ]
+    // Find nearest post to that direction (using scaled posts)
+    let nearestId: string | null = null
+    let minDist = Infinity
+    for (const p of scaledPosts) {
+      const dx = p.position[0] - dummyPos[0]
+      const dy = p.position[1] - dummyPos[1]
+      const dz = p.position[2] - dummyPos[2]
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      if (dist < minDist) {
+        minDist = dist
+        nearestId = p.id
+      }
+    }
+    if (nearestId) setSelectedPostId(nearestId)
+  }, [scaledPosts])
+
+  const handleCameraChange = useCallback((theta: number, phi: number) => {
+    cameraRotationRef.current = { theta, phi }
+    // Throttle state updates to ~10fps to avoid re-rendering the entire tree 60x/s
+    const now = Date.now()
+    if (now - lastCameraUpdateRef.current > 100) {
+      lastCameraUpdateRef.current = now
+      setCameraRotation({ theta, phi })
+    }
+  }, [])
+
   if (layout.posts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center w-full h-full"
@@ -333,12 +439,13 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>
       {/* Full-screen 3D canvas — always interactive for orbit/zoom */}
-      <Canvas3D settings={sceneSettings} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} recenter={recenter} onOrbitEnd={handleOrbitEnd}>
+      <Canvas3D settings={sceneSettings} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart}>
         {visiblePosts.map((post) => (
           <PostCard3D
             key={post.id}
             post={post}
             isSelected={selectedPostId === post.id}
+            visibility={visibilityMap.get(post.id) ?? 1}
             onSelect={handleSelect}
             onDeselect={handleDeselect}
             relatedPosts={selectedPostId === post.id ? relatedPosts : undefined}
@@ -348,7 +455,6 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             userVote={votes.get(post.id) ?? null}
             onReply={handleReply}
             onDragWhileSelected={selectedPostId === post.id ? handleDragWhileSelected : undefined}
-            cameraDistance={20}
           />
         ))}
         <EdgeNetwork posts={visiblePosts} opacity={sceneSettings.edgeOpacity} />
@@ -360,6 +466,21 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         {/* Control panel */}
         <div style={{ pointerEvents: 'auto' }}>
           <ControlPanel settings={sceneSettings} onChange={handleSettingsChange} />
+        </div>
+
+        {/* Mini-map */}
+        <div style={{ pointerEvents: 'auto' }}>
+          <MiniMap
+            posts={posts}
+            cameraTheta={cameraRotation.theta}
+            cameraPhi={cameraRotation.phi}
+            onNavigate={handleMiniMapNavigate}
+          />
+        </div>
+
+        {/* Random Article Button */}
+        <div style={{ pointerEvents: 'auto' }}>
+          <RandomArticleButton onClick={handleRandomArticle} />
         </div>
 
         {/* Bottom-right actions */}
