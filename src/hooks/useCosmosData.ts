@@ -49,6 +49,9 @@ export default function useCosmosData(): CosmosDataReturn {
     setProgress({ stage: 'Connecting...', percent: 0 })
 
     ;(async () => {
+      // Track whether we received any layout data (local var, not stale closure)
+      let receivedLayout = false
+
       try {
         const response = await fetch('/api/process', {
           method: 'POST',
@@ -116,6 +119,7 @@ export default function useCosmosData(): CosmosDataReturn {
                 setLayout(event.partial_layout as CosmosLayout)
                 setIsLoading(false)
                 setIsRefining(true)
+                receivedLayout = true
                 continue
               }
 
@@ -124,6 +128,7 @@ export default function useCosmosData(): CosmosDataReturn {
                 setLayout(event.layout as CosmosLayout)
                 setIsLoading(false)
                 setIsRefining(false)
+                receivedLayout = true
                 return
               }
             } catch (parseErr) {
@@ -134,10 +139,12 @@ export default function useCosmosData(): CosmosDataReturn {
         }
 
         // Stream ended without a final layout event
-        if (!layout) {
+        if (!receivedLayout) {
           setIsLoading(false)
-          // Only set error if we didn't already get data
           setError((prev) => prev ?? 'Stream ended without receiving layout data')
+        } else {
+          // Partial layout was received but stream ended before final — stop refining spinner
+          setIsRefining(false)
         }
       } catch (err) {
         if (abortController.signal.aborted) {
@@ -150,7 +157,7 @@ export default function useCosmosData(): CosmosDataReturn {
         setIsLoading(false)
       }
     })()
-  }, [layout])
+  }, [])
 
   const processUrl = useCallback((url: string) => {
     startProcessing({ url })
