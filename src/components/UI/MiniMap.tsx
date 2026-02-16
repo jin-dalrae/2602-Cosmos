@@ -39,8 +39,8 @@ export default function MiniMap({ posts, cameraTheta, cameraPhi, onNavigate }: M
         <div
             style={{
                 position: 'absolute',
-                top: 16,
-                right: 16,
+                bottom: 16,
+                left: 16,
                 zIndex: 30,
                 transition: 'all 0.3s',
             }}
@@ -49,8 +49,8 @@ export default function MiniMap({ posts, cameraTheta, cameraPhi, onNavigate }: M
                 onClick={() => setExpanded(!expanded)}
                 style={{
                     position: 'absolute',
-                    top: 0,
-                    right: 0,
+                    bottom: 0,
+                    left: 0,
                     padding: '6px 10px',
                     borderRadius: 6,
                     border: '1px solid #3A3530',

@@ -8,7 +8,7 @@ export interface SceneSettings {
 export const DEFAULT_SETTINGS: SceneSettings = {
   edgeOpacity: 0.08,
   distance: 20,
-  damping: 0.05,
+  damping: 0,
   articleScale: 1,
 }
 

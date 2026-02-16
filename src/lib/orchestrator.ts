@@ -222,7 +222,7 @@ function clusterLayout(posts: EnrichedPost[]): CosmosPost[] {
   })
 
   // Light repulsion — just prevent direct overlap (~6°)
-  applyRepulsion(cosmosPosts, 0.10, 6)
+  applyRepulsion(cosmosPosts, 0.07, 6)
 
   return cosmosPosts
 }
@@ -390,7 +390,7 @@ export async function processDiscussion(
   }
 
   // Light repulsion to prevent overlap after architect adjustments (~6°)
-  applyRepulsion(cosmosPosts, 0.10, 6)
+  applyRepulsion(cosmosPosts, 0.07, 6)
 
   // Convert cluster centers and gap positions to sphere coordinates
   const layout: CosmosLayout = {

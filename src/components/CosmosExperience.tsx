@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useEffect, useRef } from 'react'
+import { useCallback, useState, useMemo, useEffect, useRef, startTransition } from 'react'
 import { Link } from 'react-router-dom'
 import type { CosmosLayout, CosmosPost, ClassifiedPost } from '../lib/types'
 import Canvas3D from './MapMode/Canvas3D'
@@ -9,6 +9,12 @@ import ComposeOverlay from './ComposeOverlay'
 import DetailPanel from './DetailPanel'
 import ControlPanel, { DEFAULT_SETTINGS, type SceneSettings } from './ControlPanel'
 import MiniMap from './UI/MiniMap'
+import CameraConsent from './UI/CameraConsent'
+import useGazeTracking from '../hooks/useGazeTracking'
+import useHeadPose from '../hooks/useHeadPose'
+import FacePreview from './UI/FacePreview'
+
+type GazeMode = 'off' | 'consent' | 'active'
 
 type ComposingState =
   | { type: 'post'; initialContent: string; initialAuthor: string; initialTitle: string }
@@ -62,6 +68,28 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const [browsedPostId, setBrowsedPostId] = useState<string | null>(null)
   const browseModeRef = useRef(false)
   browseModeRef.current = browseMode
+
+  // ── Gaze mode: eye tracking controls browsed post (independent from drag-mode browse) ──
+  const [gazeMode, setGazeMode] = useState<GazeMode>('off')
+  const gazeModeRef = useRef<GazeMode>('off')
+  gazeModeRef.current = gazeMode
+  const camera = useGazeTracking()
+  const headPose = useHeadPose(camera.videoStream)
+  const [gazeSteer, setGazeSteer] = useState<{ dx: number; dy: number } | null>(null)
+  const [gazeHighlightId, setGazeHighlightId] = useState<string | null>(null)
+
+  // Face preview state
+  const [showFacePreview, setShowFacePreview] = useState(true)
+
+  // Mouse-on-card: pause gaze switching when mouse hovers over an article
+  const mouseOverCardRef = useRef(false)
+
+  // Head-pose auto-browse: stable article display with minimum time + away-close
+  const headBrowsedAtRef = useRef<number | null>(null)   // timestamp when current article was auto-browsed
+  const headAwayStartRef = useRef<number | null>(null)    // timestamp when attention moved away
+  const headBrowsedIdRef = useRef<string | null>(null)    // current head-browsed article id
+  const MIN_DISPLAY_MS = 3_000   // 3 seconds minimum before switching
+  const AWAY_CLOSE_MS = 500      // 0.5 seconds of looking away to transition
 
   // Track camera rotation for mini-map + visibility culling
   // Use a ref for every-frame updates, throttle state updates to ~10fps
@@ -132,6 +160,20 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       }
     }
 
+    // Re-clamp to [30°, 150°] after repulsion may have pushed posts toward poles
+    for (let i = 0; i < normalized.length; i++) {
+      const [px, py, pz] = normalized[i].position
+      if (Math.abs(py) > maxY) {
+        const clampedY = maxY * Math.sign(py)
+        const xzLen = Math.sqrt(px * px + pz * pz) || 0.001
+        const targetXZ = Math.sqrt(1 - clampedY * clampedY)
+        normalized[i] = {
+          ...normalized[i],
+          position: [(px / xzLen) * targetXZ, clampedY, (pz / xzLen) * targetXZ],
+        }
+      }
+    }
+
     return normalized
   }, [posts])
 
@@ -143,28 +185,19 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
   const selectedPost = selectedPostId ? postMap.get(selectedPostId) ?? null : null
 
-  // Focus target only for initial load — don't move camera when clicking articles
-  const [initialFocusDone, setInitialFocusDone] = useState(false)
+  // When a post is selected, smoothly rotate camera to center it
   const focusTarget = useMemo<[number, number, number] | null>(() => {
-    if (initialFocusDone) return null
     if (!selectedPostId) return null
     const sp = scaledPosts.find(p => p.id === selectedPostId)
     return sp?.position ?? null
-  }, [selectedPostId, scaledPosts, initialFocusDone])
-  // After first focus, disable auto-navigation
-  useEffect(() => {
-    if (focusTarget && !initialFocusDone) {
-      const t = setTimeout(() => setInitialFocusDone(true), 500)
-      return () => clearTimeout(t)
-    }
-  }, [focusTarget, initialFocusDone])
+  }, [selectedPostId, scaledPosts])
 
   // Visibility culling with fade zone:
-  //   0°–35°  → fully visible (opacity 1)
-  //   35°–70° → fade zone (opacity 1→0)
-  //   70°+    → not rendered
-  const cosInner = Math.cos(35 * Math.PI / 180)  // ~0.819
-  const cosOuter = Math.cos(70 * Math.PI / 180)  // ~0.342
+  //   0°–45°  → fully visible (opacity 1)
+  //   45°–65° → fade zone (opacity 1→0)
+  //   65°+    → not rendered
+  const cosInner = Math.cos(45 * Math.PI / 180)  // ~0.707
+  const cosOuter = Math.cos(65 * Math.PI / 180)  // ~0.423
   const fadeBand = cosInner - cosOuter
 
   const visiblePostsWithOpacity = useMemo(() => {
@@ -177,18 +210,20 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
     const result: { post: CosmosPost; visibility: number }[] = []
     for (const p of scaledPosts) {
-      if (p.id === selectedPostId || p.id === browsedPostId) {
+      if (p.id === selectedPostId || p.id === browsedPostId || p.id === gazeHighlightId) {
         result.push({ post: p, visibility: 1 })
         continue
       }
       const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
       const dot = (p.position[0] / len) * lookX + (p.position[1] / len) * lookY + (p.position[2] / len) * lookZ
-      if (dot < cosOuter) continue // beyond 60° — don't render
-      const visibility = dot >= cosInner ? 1 : (dot - cosOuter) / fadeBand
+      if (dot < cosOuter) continue // beyond 80° — don't render
+      // Quantize to 5 steps (0, 0.2, 0.4, 0.6, 0.8, 1.0) — CSS transitions smooth the rest
+      const raw = dot >= cosInner ? 1 : (dot - cosOuter) / fadeBand
+      const visibility = Math.round(raw * 5) / 5
       result.push({ post: p, visibility })
     }
     return result
-  }, [scaledPosts, cameraRotation, selectedPostId, browsedPostId, cosInner, cosOuter, fadeBand])
+  }, [scaledPosts, cameraRotation, selectedPostId, browsedPostId, gazeHighlightId, cosInner, cosOuter, fadeBand])
 
   const visiblePosts = useMemo(() => visiblePostsWithOpacity.map(v => v.post), [visiblePostsWithOpacity])
   const visibilityMap = useMemo(() => {
@@ -275,8 +310,8 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
 
     previousSelectedId.current = null
-    // Auto-open if nearest card is within 10° of view center
-    const threshold = Math.cos(10 * Math.PI / 180) // ~0.985
+    // Auto-open if nearest card is within 40° of view center
+    const threshold = Math.cos(30 * Math.PI / 180) // ~0.866
     if (bestId && bestAlignment > threshold) setSelectedPostId(bestId)
   }, [])
 
@@ -498,14 +533,14 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
   const handleCameraChange = useCallback((theta: number, phi: number) => {
     cameraRotationRef.current = { theta, phi }
-    // Throttle state updates to ~20fps to keep visibility smooth without 60fps re-renders
+    // Throttle state updates to ~10fps — camera itself is still smooth at 60fps via ref
     const now = Date.now()
-    if (now - lastCameraUpdateRef.current > 50) {
+    if (now - lastCameraUpdateRef.current > 100) {
       lastCameraUpdateRef.current = now
-      setCameraRotation({ theta, phi })
+      startTransition(() => setCameraRotation({ theta, phi }))
 
-      // Browse mode: find nearest post to look direction
-      if (browseModeRef.current) {
+      // Browse mode: find nearest post to look direction (skip when gaze controls it)
+      if (browseModeRef.current && gazeModeRef.current !== 'active') {
         const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi))
         const lookX = Math.sin(effectivePhi) * Math.sin(theta)
         const lookY = Math.cos(effectivePhi)
@@ -513,7 +548,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
         let bestId: string | null = null
         let bestDot = -Infinity
-        const threshold = Math.cos(30 * Math.PI / 180) // ~30°
+        const threshold = Math.cos(40 * Math.PI / 180) // ~40°
 
         for (const p of scaledPostsRef.current) {
           const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
@@ -531,6 +566,129 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
   }, [])
 
+  // ── Gaze mode handlers ──
+  const handleGazeToggle = useCallback(() => {
+    if (gazeMode === 'off') {
+      setGazeMode('consent')
+    } else {
+      camera.stop()
+      setGazeMode('off')
+      setGazeSteer(null)
+      // Reset head-browse state
+      headBrowsedIdRef.current = null
+      headBrowsedAtRef.current = null
+      headAwayStartRef.current = null
+      setGazeHighlightId(null)
+    }
+  }, [gazeMode, camera])
+
+  const handleConsentAccept = useCallback(async () => {
+    const ok = await camera.start()
+    if (ok) {
+      setGazeMode('active')
+      setSelectedPostId(null)
+    } else {
+      setGazeMode('off')
+    }
+  }, [camera])
+
+  const handleConsentDecline = useCallback(() => {
+    setGazeMode('off')
+  }, [])
+
+  // ── Gaze processing: steer camera via head pose + auto-browse nearest article ──
+  useEffect(() => {
+    if (gazeMode !== 'active') return
+
+    // Use head pose as the steering signal
+    if (headPose.faceDetected) {
+      setGazeSteer({ dx: headPose.yaw, dy: headPose.pitch })
+    }
+
+    // Auto-browse: find nearest post to where head is pointing
+    // Lead the search ahead of camera by adding head-pose offset
+    const { theta, phi } = cameraRotationRef.current
+    const GAZE_LEAD = 45 * Math.PI / 180 // head-pose offset angle
+    const gazeTheta = theta + headPose.yaw * GAZE_LEAD
+    const gazePhi = phi - headPose.pitch * GAZE_LEAD
+    const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, gazePhi))
+    const lookX = Math.sin(effectivePhi) * Math.sin(gazeTheta)
+    const lookY = Math.cos(effectivePhi)
+    const lookZ = Math.sin(effectivePhi) * Math.cos(gazeTheta)
+
+    let bestId: string | null = null
+    let bestDot = -Infinity
+    const threshold = Math.cos(40 * Math.PI / 180)
+
+    for (const p of scaledPostsRef.current) {
+      const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
+      const dot = (p.position[0] / len) * lookX + (p.position[1] / len) * lookY + (p.position[2] / len) * lookZ
+      if (dot > bestDot) {
+        bestDot = dot
+        bestId = p.id
+      }
+    }
+
+    const now = Date.now()
+    const currentId = headBrowsedIdRef.current
+
+    // Mouse on card → freeze: don't switch articles
+    if (mouseOverCardRef.current) {
+      headAwayStartRef.current = null
+      return
+    }
+
+    // No article within view cone
+    if (!bestId || bestDot < threshold) {
+      // If currently showing an article, start the away timer
+      if (currentId && headBrowsedAtRef.current) {
+        if (!headAwayStartRef.current) {
+          headAwayStartRef.current = now
+        } else if (now - headAwayStartRef.current > AWAY_CLOSE_MS &&
+                   now - headBrowsedAtRef.current > MIN_DISPLAY_MS) {
+          // Past minimum display + away → close
+          setGazeHighlightId(null)
+          setSelectedPostId(null)
+          headBrowsedIdRef.current = null
+          headBrowsedAtRef.current = null
+          headAwayStartRef.current = null
+        }
+      }
+      return
+    }
+
+    // Same article as currently shown
+    if (bestId === currentId) {
+      headAwayStartRef.current = null // attention returned, reset away timer
+      return
+    }
+
+    // Different article — check if we can switch
+    if (!currentId) {
+      // No article currently shown — open immediately
+      setGazeHighlightId(bestId)
+      setSelectedPostId(bestId)
+      headBrowsedIdRef.current = bestId
+      headBrowsedAtRef.current = now
+      headAwayStartRef.current = null
+    } else if (headBrowsedAtRef.current && now - headBrowsedAtRef.current > MIN_DISPLAY_MS) {
+      // Past minimum display time — start away timer for current article
+      if (!headAwayStartRef.current) {
+        headAwayStartRef.current = now
+      } else if (now - headAwayStartRef.current > AWAY_CLOSE_MS) {
+        // Away → transition to new article
+        setGazeHighlightId(bestId)
+        setSelectedPostId(bestId)
+        headBrowsedIdRef.current = bestId
+        headBrowsedAtRef.current = now
+        headAwayStartRef.current = null
+      }
+    } else {
+      // Still within minimum display time — keep current article, don't switch
+      headAwayStartRef.current = null
+    }
+  }, [gazeMode, headPose.yaw, headPose.pitch, headPose.faceDetected])
+
   if (layout.posts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center w-full h-full"
@@ -543,13 +701,13 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>
       {/* Full-screen 3D canvas — always interactive for orbit/zoom */}
-      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick}>
+      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} gazeSteer={gazeMode === 'active' && !selectedPostId ? gazeSteer : null} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick}>
         {visiblePosts.map((post) => (
           <PostCard3D
             key={post.id}
             post={post}
             isSelected={!browseMode && selectedPostId === post.id}
-            isBrowsed={browseMode && browsedPostId === post.id}
+            isBrowsed={(browseMode && browsedPostId === post.id) || (gazeMode === 'active' && gazeHighlightId === post.id)}
             visibility={visibilityMap.get(post.id) ?? 1}
             isAnimatingIn={animatingPostId === post.id}
             isHighlighted={highlightedPostIds.has(post.id)}
@@ -564,6 +722,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             userVote={votes.get(post.id) ?? null}
             onReply={handleReply}
             onDragWhileSelected={!browseMode && selectedPostId === post.id ? handleDragWhileSelected : undefined}
+            onHover={(h) => { mouseOverCardRef.current = h }}
           />
         ))}
         <EdgeNetwork posts={visiblePosts} opacity={sceneSettings.edgeOpacity} />
@@ -587,7 +746,48 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
           />
         </div>
 
-        {/* Top-right browse mode toggle */}
+        {/* Top-left gaze mode toggle (below control panel) */}
+        <div style={{
+          position: 'absolute', top: 100, left: 16,
+          pointerEvents: 'auto',
+        }}>
+          <button
+            onClick={handleGazeToggle}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 16px', borderRadius: 12,
+              border: gazeMode === 'active' ? '1px solid #8FB8A0' : '1px solid #3A3530',
+              backgroundColor: gazeMode === 'active' ? 'rgba(143, 184, 160, 0.15)' : 'rgba(38, 34, 32, 0.85)',
+              backdropFilter: 'blur(8px)',
+              color: gazeMode === 'active' ? '#8FB8A0' : '#9E9589', fontSize: 13, fontWeight: 500,
+              fontFamily: 'system-ui, sans-serif',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
+            </svg>
+            {gazeMode === 'active' ? 'Gaze On' : 'Gaze'}
+          </button>
+          {/* Error toast */}
+          {camera.error && gazeMode === 'off' && (
+            <div style={{
+              marginTop: 8, padding: '8px 12px', borderRadius: 10,
+              backgroundColor: 'rgba(200, 80, 60, 0.15)',
+              border: '1px solid rgba(200, 80, 60, 0.3)',
+              fontSize: 11, color: '#E8836B',
+              fontFamily: 'system-ui, sans-serif',
+              maxWidth: 200, lineHeight: 1.4,
+            }}>
+              Camera not found. Check that a webcam is connected and permissions are allowed.
+            </div>
+          )}
+        </div>
+
+        {/* Top-right drag mode toggle */}
         <div style={{
           position: 'absolute', top: 16, right: 16,
           pointerEvents: 'auto',
@@ -618,7 +818,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            Browse
+            Drag Mode
           </button>
         </div>
 
@@ -686,7 +886,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
           </button>
         </div>
 
-        {/* Browse mode sidebar */}
+        {/* Drag-mode browse sidebar */}
         {browseMode && browsedPost && (
           <div style={{ pointerEvents: 'auto' }}>
             <DetailPanel
@@ -762,6 +962,26 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             </div>
           </div>
         )}
+
+        {/* Face preview — bottom-left when gaze active */}
+        {gazeMode === 'active' && (
+          <FacePreview
+            videoStream={camera.videoStream}
+            visible={showFacePreview}
+            onToggle={() => setShowFacePreview(v => !v)}
+          />
+        )}
+
+        {/* Camera consent modal */}
+        {gazeMode === 'consent' && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <CameraConsent
+              onAccept={handleConsentAccept}
+              onDecline={handleConsentDecline}
+            />
+          </div>
+        )}
+
       </div>
     </div>
   )
