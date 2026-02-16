@@ -2,7 +2,7 @@ import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-const PARTICLE_COUNT = 300
+const PARTICLE_COUNT = 150
 const RADIUS_MIN = 26   // just beyond the outermost cards
 const RADIUS_MAX = 32   // background star field
 const POINT_SIZE = 0.08

@@ -1,8 +1,64 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useMemo } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { PerspectiveCamera } from '@react-three/drei'
 import type { SceneSettings } from '../ControlPanel'
 import * as THREE from 'three'
+
+/* ── Sunset sky sphere ── */
+const sunsetVertexShader = `
+  varying vec3 vWorldPosition;
+  void main() {
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPos.xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+const sunsetFragmentShader = `
+  varying vec3 vWorldPosition;
+  void main() {
+    vec3 dir = normalize(vWorldPosition);
+    float y = dir.y * 0.5 + 0.5; // 0 = bottom, 1 = top
+
+    // Sunset gradient: deep navy top → warm rose middle → amber horizon → soft peach bottom
+    vec3 topColor     = vec3(0.12, 0.11, 0.18);  // deep indigo
+    vec3 midHighColor = vec3(0.22, 0.15, 0.22);  // dusty plum
+    vec3 midColor     = vec3(0.45, 0.22, 0.20);  // warm rose
+    vec3 horizonColor = vec3(0.62, 0.38, 0.22);  // amber
+    vec3 lowColor     = vec3(0.50, 0.35, 0.25);  // warm sand
+    vec3 bottomColor  = vec3(0.18, 0.14, 0.13);  // dark earth
+
+    vec3 color;
+    if (y > 0.75) {
+      color = mix(midHighColor, topColor, (y - 0.75) / 0.25);
+    } else if (y > 0.55) {
+      color = mix(midColor, midHighColor, (y - 0.55) / 0.20);
+    } else if (y > 0.45) {
+      color = mix(horizonColor, midColor, (y - 0.45) / 0.10);
+    } else if (y > 0.30) {
+      color = mix(lowColor, horizonColor, (y - 0.30) / 0.15);
+    } else {
+      color = mix(bottomColor, lowColor, y / 0.30);
+    }
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`
+
+function SunsetSky() {
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: sunsetVertexShader,
+    fragmentShader: sunsetFragmentShader,
+    side: THREE.BackSide,
+    depthWrite: false,
+  }), [])
+
+  return (
+    <mesh material={material}>
+      <sphereGeometry args={[500, 32, 32]} />
+    </mesh>
+  )
+}
 
 interface Canvas3DProps {
   children: ReactNode
@@ -10,6 +66,7 @@ interface Canvas3DProps {
   articleRadius: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
+  gazeSteer?: { dx: number; dy: number } | null
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
   onCameraChange?: (theta: number, phi: number) => void
   onCanvasDragStart?: () => void
@@ -39,7 +96,7 @@ function ScaledSphere({ targetRadius, children }: { targetRadius: number; childr
   return <group ref={groupRef}>{children}</group>
 }
 
-function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick, damping = 0, focusTarget, pendingAutoSelect }: {
+function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick, damping = 0, focusTarget, pendingAutoSelect, gazeSteer }: {
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
   onCameraChange?: (theta: number, phi: number) => void
   onCanvasDragStart?: () => void
@@ -47,6 +104,7 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   damping?: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
+  gazeSteer?: { dx: number; dy: number } | null
 }) {
   const { camera, gl } = useThree()
   const callbackRef = useRef(onOrbitEnd)
@@ -58,6 +116,8 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
 
   // Camera rotation (euler angles)
   const rotation = useRef({ theta: 0, phi: Math.PI / 2 })
+  // Base rotation: updated by drag + focus animation, head pose adds offset on top
+  const baseRotation = useRef({ theta: 0, phi: Math.PI / 2 })
   // Velocity for damping (screen-space angular rates: h=horizontal, v=vertical)
   const velocity = useRef({ h: 0, v: 0 })
   // Drag state
@@ -152,6 +212,8 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
     const onUp = () => {
       if (!dragging.current) return
       dragging.current = false
+      // Sync base rotation after drag so head offset starts from here
+      baseRotation.current = { ...rotation.current }
 
       if (didDrag.current) {
         // Real drag → report orbit end for auto-select
@@ -198,7 +260,7 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   useFrame(() => {
     // Focus animation
     if (animating.current) {
-      const t = 0.08
+      const t = 0.025
       let dTheta = goalRotation.current.theta - rotation.current.theta
       while (dTheta > Math.PI) dTheta -= Math.PI * 2
       while (dTheta < -Math.PI) dTheta += Math.PI * 2
@@ -207,7 +269,36 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
 
       if (Math.abs(dTheta) < 0.001 && Math.abs(goalRotation.current.phi - rotation.current.phi) < 0.001) {
         animating.current = false
+        // Sync base rotation after focus animation settles
+        baseRotation.current = { ...rotation.current }
       }
+    }
+
+    // Head-pose-driven rotation: position-based (head position = angular offset, not speed)
+    if (gazeSteer && !dragging.current && !animating.current) {
+      const maxOffset = 25 * Math.PI / 180 // max ±25° offset from base
+      const deadZone = 0.15
+
+      const applyAxis = (val: number) => {
+        const abs = Math.abs(val)
+        if (abs < deadZone) return 0
+        const t = (abs - deadZone) / (1 - deadZone)
+        return Math.sign(val) * t * maxOffset
+      }
+
+      // Target = base rotation + head offset
+      const targetTheta = baseRotation.current.theta + applyAxis(gazeSteer.dx)
+      const targetPhi = THREE.MathUtils.clamp(
+        baseRotation.current.phi - applyAxis(gazeSteer.dy),
+        0.1, Math.PI - 0.1,
+      )
+
+      // Smooth lerp toward target
+      let dTheta = targetTheta - rotation.current.theta
+      while (dTheta > Math.PI) dTheta -= Math.PI * 2
+      while (dTheta < -Math.PI) dTheta += Math.PI * 2
+      rotation.current.theta += dTheta * 0.06
+      rotation.current.phi += (targetPhi - rotation.current.phi) * 0.06
     }
 
     // Apply damping when not dragging (fast decay for minimal coast)
@@ -234,11 +325,11 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   return null
 }
 
-export default function Canvas3D({ children, settings, articleRadius, focusTarget, pendingAutoSelect, onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick }: Canvas3DProps) {
-  const fov = 70
+export default function Canvas3D({ children, settings, articleRadius, focusTarget, pendingAutoSelect, gazeSteer, onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick }: Canvas3DProps) {
+  const fov = 78
 
   return (
-    <Canvas style={{ background: '#262220' }}>
+    <Canvas style={{ background: '#1E1914' }} dpr={[1, 1.5]} performance={{ min: 0.5 }}>
       <PerspectiveCamera makeDefault fov={fov} position={[0, 0, 0]} />
       <RotationCamera
         onOrbitEnd={onOrbitEnd}
@@ -248,10 +339,14 @@ export default function Canvas3D({ children, settings, articleRadius, focusTarge
         damping={settings.damping}
         focusTarget={focusTarget}
         pendingAutoSelect={pendingAutoSelect}
+        gazeSteer={gazeSteer}
       />
 
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[5, 5, 5]} intensity={0.4} />
+      <SunsetSky />
+
+      <ambientLight intensity={0.7} color="#FFE8D6" />
+      <directionalLight position={[5, 3, 5]} intensity={0.5} color="#FFCBA4" />
+      <directionalLight position={[-3, -2, -4]} intensity={0.15} color="#9B8FB8" />
 
       <ScaledSphere targetRadius={articleRadius}>
         {children}
