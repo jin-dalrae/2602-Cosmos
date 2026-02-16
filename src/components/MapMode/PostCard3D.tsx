@@ -6,7 +6,12 @@ import { getEmotionColors, EDGE_COLORS } from '../shared/EmotionPalette'
 interface PostCard3DProps {
   post: CosmosPost
   isSelected: boolean
+  isBrowsed?: boolean // true when this card is the nearest in browse mode
   visibility?: number // 0–1, controls fade-in/out at cone edges
+  isAnimatingIn?: boolean // true when this post is flying to sphere
+  isHighlighted?: boolean // true when this is a related post to a new AI post
+  dimmed?: boolean // true when another card is open
+  articleScale?: number // 0.5–2, scales opened article size
   onSelect: (postId: string) => void
   onDeselect: () => void
   relatedPosts?: { post: CosmosPost; type: string; reason: string }[]
@@ -21,7 +26,12 @@ interface PostCard3DProps {
 export default function PostCard3D({
   post,
   isSelected,
+  isBrowsed = false,
   visibility = 1,
+  isAnimatingIn = false,
+  isHighlighted = false,
+  dimmed = false,
+  articleScale = 1,
   onSelect,
   relatedPosts,
   replies,
@@ -105,9 +115,9 @@ export default function PostCard3D({
         center
         transform
         sprite
-        distanceFactor={50}
+        distanceFactor={isSelected ? 75 * articleScale : 50}
         occlude={false}
-        style={{ pointerEvents: 'auto', width: isSelected ? 500 : 300, transition: 'width 0.35s ease' }}
+        style={{ pointerEvents: 'auto', width: isSelected ? 550 : 300, transition: 'width 0.35s ease' }}
         zIndexRange={isSelected ? [10000, 10000] : [0, 9999]}
       >
         <div
@@ -117,32 +127,50 @@ export default function PostCard3D({
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           style={{
-            width: isSelected ? 500 : 300,
+            width: isSelected ? 550 : 300,
             height: isSelected ? undefined : 200,
-            maxHeight: isSelected ? 500 : 200,
+            maxHeight: isSelected ? 600 : 200,
             overflowY: isSelected ? 'auto' : 'hidden',
             backgroundColor: colors.cardBg,
             borderRadius: 16,
-            boxShadow: isSelected
-              ? `0 6px 32px rgba(28, 26, 24, 0.35), 0 0 0 2px ${colors.accent}`
-              : hovered
-                ? `0 6px 28px rgba(28, 26, 24, 0.3), 0 0 0 2px ${colors.accent}40`
-                : '0 3px 16px rgba(28, 26, 24, 0.2)',
+            boxShadow: isAnimatingIn
+              ? `0 0 40px ${colors.accent}80, 0 0 0 3px ${colors.accent}`
+              : isHighlighted
+                ? `0 0 24px ${colors.accent}60, 0 0 0 2px ${colors.accent}`
+                : isSelected
+                  ? `0 6px 32px rgba(28, 26, 24, 0.35), 0 0 0 2px ${colors.accent}`
+                  : isBrowsed
+                    ? `0 0 20px ${colors.accent}50, 0 0 0 2px ${colors.accent}90`
+                    : hovered
+                      ? `0 6px 28px rgba(28, 26, 24, 0.3), 0 0 0 2px ${colors.accent}40`
+                      : '0 3px 16px rgba(28, 26, 24, 0.2)',
             color: colors.text,
             fontFamily: 'Georgia, "Times New Roman", serif',
             cursor: 'pointer',
-            opacity: isSelected ? 1 : visibility,
-            transform: isSelected
-              ? 'scale(1)'
-              : hovered
-                ? `scale(${0.92 + visibility * 0.1})`
-                : `scale(${0.85 + visibility * 0.15})`,
-            transition: 'width 0.35s ease, max-height 0.35s ease, transform 0.4s ease, box-shadow 0.2s, opacity 0.4s ease',
+            opacity: isAnimatingIn ? 1 : isSelected ? 1 : dimmed ? visibility * 0.4 : visibility,
+            transform: isAnimatingIn
+              ? 'scale(1.1)'
+              : isHighlighted
+                ? 'scale(1.05)'
+                : isSelected
+                  ? 'scale(1)'
+                  : isBrowsed
+                    ? 'scale(1.02)'
+                    : hovered
+                      ? `scale(${0.92 + visibility * 0.1})`
+                      : `scale(${0.85 + visibility * 0.15})`,
+            animation: isHighlighted ? 'highlightPulse 1s ease-in-out infinite' : undefined,
+            transition: 'width 0.35s ease, max-height 0.35s ease, transform 0.6s ease, box-shadow 0.6s ease, opacity 0.6s ease',
             overflow: 'hidden',
             userSelect: 'none',
             position: 'relative',
           }}
         >
+          {/* Keyframes for highlight animation */}
+          {isHighlighted && (
+            <style>{`@keyframes highlightPulse { 0%, 100% { box-shadow: 0 0 16px ${colors.accent}40; } 50% { box-shadow: 0 0 32px ${colors.accent}80; } }`}</style>
+          )}
+
           {/* Accent strip */}
           <div style={{
             position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
