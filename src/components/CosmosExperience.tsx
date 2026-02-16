@@ -78,12 +78,24 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const sphereRadius = sceneSettings.distance * 5 + 50
   const scaledPosts = useMemo(() => {
     // Normalize to unit sphere (radius 1) — actual radius is handled by group scale in Canvas3D
+    // Clamp phi to [30°, 150°] to keep articles away from poles (navigation feels stuck there)
+    const maxY = Math.cos(30 * Math.PI / 180) // ~0.866
     const normalized = posts.map(p => {
       const [x, y, z] = p.position
       const len = Math.sqrt(x * x + y * y + z * z) || 1
+      let nx = x / len, ny = y / len, nz = z / len
+
+      if (Math.abs(ny) > maxY) {
+        ny = maxY * Math.sign(ny)
+        const xzLen = Math.sqrt(nx * nx + nz * nz) || 0.001
+        const targetXZ = Math.sqrt(1 - ny * ny)
+        nx = (nx / xzLen) * targetXZ
+        nz = (nz / xzLen) * targetXZ
+      }
+
       return {
         ...p,
-        position: [x / len, y / len, z / len] as [number, number, number],
+        position: [nx, ny, nz] as [number, number, number],
       }
     })
 
@@ -131,6 +143,22 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
   const selectedPost = selectedPostId ? postMap.get(selectedPostId) ?? null : null
 
+  // Focus target only for initial load — don't move camera when clicking articles
+  const [initialFocusDone, setInitialFocusDone] = useState(false)
+  const focusTarget = useMemo<[number, number, number] | null>(() => {
+    if (initialFocusDone) return null
+    if (!selectedPostId) return null
+    const sp = scaledPosts.find(p => p.id === selectedPostId)
+    return sp?.position ?? null
+  }, [selectedPostId, scaledPosts, initialFocusDone])
+  // After first focus, disable auto-navigation
+  useEffect(() => {
+    if (focusTarget && !initialFocusDone) {
+      const t = setTimeout(() => setInitialFocusDone(true), 500)
+      return () => clearTimeout(t)
+    }
+  }, [focusTarget, initialFocusDone])
+
   // Visibility culling with fade zone:
   //   0°–35°  → fully visible (opacity 1)
   //   35°–70° → fade zone (opacity 1→0)
@@ -141,11 +169,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
   const visiblePostsWithOpacity = useMemo(() => {
     const { theta, phi } = cameraRotation
-    const overview = sceneSettings.overview
-    const basePhi = Math.PI / 2 + (0.15 - Math.PI / 2) * overview
-    const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1,
-      basePhi + (phi - Math.PI / 2)
-    ))
+    const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi))
     // Three.js Spherical convention: x = sin(phi)*sin(theta), z = sin(phi)*cos(theta)
     const lookX = Math.sin(effectivePhi) * Math.sin(theta)
     const lookY = Math.cos(effectivePhi)
@@ -153,7 +177,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
     const result: { post: CosmosPost; visibility: number }[] = []
     for (const p of scaledPosts) {
-      if (p.id === selectedPostId) {
+      if (p.id === selectedPostId || p.id === browsedPostId) {
         result.push({ post: p, visibility: 1 })
         continue
       }
@@ -164,7 +188,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       result.push({ post: p, visibility })
     }
     return result
-  }, [scaledPosts, cameraRotation, sceneSettings.overview, selectedPostId, cosInner, cosOuter, fadeBand])
+  }, [scaledPosts, cameraRotation, selectedPostId, browsedPostId, cosInner, cosOuter, fadeBand])
 
   const visiblePosts = useMemo(() => visiblePostsWithOpacity.map(v => v.post), [visiblePostsWithOpacity])
   const visibilityMap = useMemo(() => {
@@ -482,18 +506,14 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
       // Browse mode: find nearest post to look direction
       if (browseModeRef.current) {
-        const overview = sceneSettings.overview
-        const basePhi = Math.PI / 2 + (0.15 - Math.PI / 2) * overview
-        const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1,
-          basePhi + (phi - Math.PI / 2)
-        ))
+        const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi))
         const lookX = Math.sin(effectivePhi) * Math.sin(theta)
         const lookY = Math.cos(effectivePhi)
         const lookZ = Math.sin(effectivePhi) * Math.cos(theta)
 
         let bestId: string | null = null
         let bestDot = -Infinity
-        const threshold = Math.cos(25 * Math.PI / 180) // ~25°
+        const threshold = Math.cos(30 * Math.PI / 180) // ~30°
 
         for (const p of scaledPostsRef.current) {
           const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
@@ -509,7 +529,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         }
       }
     }
-  }, [sceneSettings.overview])
+  }, [])
 
   if (layout.posts.length === 0) {
     return (
@@ -523,7 +543,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>
       {/* Full-screen 3D canvas — always interactive for orbit/zoom */}
-      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} pendingAutoSelect={pendingAutoSelect} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick}>
+      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick}>
         {visiblePosts.map((post) => (
           <PostCard3D
             key={post.id}
@@ -567,10 +587,9 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
           />
         </div>
 
-        {/* Bottom-right actions */}
+        {/* Top-right browse mode toggle */}
         <div style={{
-          position: 'absolute', bottom: 20, right: 20,
-          display: 'flex', gap: 8, alignItems: 'center',
+          position: 'absolute', top: 16, right: 16,
           pointerEvents: 'auto',
         }}>
           <button
@@ -585,7 +604,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             }}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '12px 16px', borderRadius: 12,
+              padding: '10px 16px', borderRadius: 12,
               border: browseMode ? '1px solid #D4B872' : '1px solid #3A3530',
               backgroundColor: browseMode ? 'rgba(212, 184, 114, 0.15)' : 'rgba(38, 34, 32, 0.85)',
               backdropFilter: 'blur(8px)',
@@ -601,6 +620,14 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             </svg>
             Browse
           </button>
+        </div>
+
+        {/* Bottom-right actions */}
+        <div style={{
+          position: 'absolute', bottom: 20, right: 20,
+          display: 'flex', gap: 8, alignItems: 'center',
+          pointerEvents: 'auto',
+        }}>
           <Link
             to="/list"
             style={{
@@ -663,7 +690,6 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         {browseMode && browsedPost && (
           <div style={{ pointerEvents: 'auto' }}>
             <DetailPanel
-              key={browsedPost.id}
               post={browsedPost}
               relatedPosts={browsedRelatedPosts}
               replies={browsedReplies}
