@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { CosmosPost } from '../lib/types'
 import { getEmotionColors, EDGE_COLORS } from './shared/EmotionPalette'
 
@@ -23,6 +24,20 @@ export default function DetailPanel({
   onReply,
 }: DetailPanelProps) {
   const colors = getEmotionColors(post.emotion)
+
+  // Fade-in animation when post changes
+  const [animKey, setAnimKey] = useState(post.id)
+  const [fadeIn, setFadeIn] = useState(true)
+  useEffect(() => {
+    if (post.id !== animKey) {
+      setFadeIn(false)
+      const t = requestAnimationFrame(() => {
+        setAnimKey(post.id)
+        setFadeIn(true)
+      })
+      return () => cancelAnimationFrame(t)
+    }
+  }, [post.id, animKey])
 
   return (
     <div
@@ -86,6 +101,9 @@ export default function DetailPanel({
           flex: 1,
           overflowY: 'auto',
           padding: '24px 24px 24px 28px',
+          opacity: fadeIn ? 1 : 0,
+          transform: fadeIn ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 0.2s ease, transform 0.2s ease',
         }}
       >
         {/* Core claim */}

@@ -2,24 +2,34 @@ import { useState, useCallback } from 'react'
 import { UI_COLORS } from './shared/EmotionPalette'
 
 interface ComposeOverlayProps {
-  mode: { type: 'post' } | { type: 'reply'; parentAuthor: string }
-  onSubmit: (content: string, author: string) => void
+  mode: { type: 'post'; initialContent?: string; initialAuthor?: string; initialTitle?: string } | { type: 'reply'; parentAuthor: string }
+  onSubmit: (content: string, author: string, title?: string) => void
   onCancel: () => void
+  submitting?: boolean
 }
 
-export default function ComposeOverlay({ mode, onSubmit, onCancel }: ComposeOverlayProps) {
-  const [author, setAuthor] = useState('Anonymous')
-  const [content, setContent] = useState('')
+export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = false }: ComposeOverlayProps) {
+  const [author, setAuthor] = useState(
+    mode.type === 'post' && mode.initialAuthor ? mode.initialAuthor : 'Anonymous'
+  )
+  const [postTitle, setPostTitle] = useState(
+    mode.type === 'post' && mode.initialTitle ? mode.initialTitle : ''
+  )
+  const [content, setContent] = useState(
+    mode.type === 'post' && mode.initialContent ? mode.initialContent : ''
+  )
 
   const handleSubmit = useCallback(() => {
     const trimmed = content.trim()
-    if (!trimmed) return
-    onSubmit(trimmed, author.trim() || 'Anonymous')
-  }, [content, author, onSubmit])
+    if (!trimmed || submitting) return
+    onSubmit(trimmed, author.trim() || 'Anonymous', postTitle.trim() || undefined)
+  }, [content, author, postTitle, onSubmit, submitting])
 
-  const title = mode.type === 'reply'
+  const heading = mode.type === 'reply'
     ? `Reply to ${mode.parentAuthor}`
     : 'New Post'
+
+  const canSubmit = content.trim() && !submitting
 
   return (
     <div
@@ -38,7 +48,9 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel }: ComposeOver
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 420,
+          width: 600,
+          maxHeight: 500,
+          overflowY: 'auto',
           backgroundColor: '#2E2A28',
           borderRadius: 16,
           border: '1px solid rgba(245, 242, 239, 0.08)',
@@ -47,7 +59,7 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel }: ComposeOver
           fontFamily: 'system-ui, sans-serif',
         }}
       >
-        {/* Title */}
+        {/* Heading */}
         <div style={{
           fontSize: 18,
           fontWeight: 600,
@@ -55,8 +67,39 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel }: ComposeOver
           marginBottom: 20,
           fontFamily: 'Georgia, serif',
         }}>
-          {title}
+          {heading}
         </div>
+
+        {/* Title (only for new posts) */}
+        {mode.type === 'post' && (
+          <>
+            <label style={{ fontSize: 12, color: UI_COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+              Title
+            </label>
+            <input
+              type="text"
+              value={postTitle}
+              onChange={(e) => setPostTitle(e.target.value)}
+              placeholder="A short headline for your post..."
+              style={{
+                display: 'block',
+                width: '100%',
+                marginTop: 6,
+                marginBottom: 16,
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid rgba(245, 242, 239, 0.1)',
+                backgroundColor: '#262220',
+                color: UI_COLORS.textPrimary,
+                fontSize: 16,
+                fontWeight: 600,
+                fontFamily: 'Georgia, serif',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </>
+        )}
 
         {/* Author */}
         <label style={{ fontSize: 12, color: UI_COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2 }}>
@@ -132,22 +175,31 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel }: ComposeOver
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!content.trim()}
+            disabled={!canSubmit}
             style={{
               padding: '10px 24px',
               borderRadius: 10,
               border: 'none',
-              backgroundColor: content.trim() ? '#D4B872' : '#4A4540',
-              color: content.trim() ? '#1C1A18' : '#6B6560',
+              backgroundColor: canSubmit ? '#D4B872' : '#4A4540',
+              color: canSubmit ? '#1C1A18' : '#6B6560',
               fontSize: 14,
               fontWeight: 600,
               fontFamily: 'system-ui, sans-serif',
-              cursor: content.trim() ? 'pointer' : 'default',
+              cursor: canSubmit ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            {mode.type === 'reply' ? 'Reply' : 'Post'}
+            {submitting && (
+              <div style={{
+                width: 14, height: 14, border: '2px solid #1C1A18',
+                borderTopColor: 'transparent', borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+            )}
+            {submitting ? 'Posting...' : mode.type === 'reply' ? 'Reply' : 'Post'}
           </button>
         </div>
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
   )
