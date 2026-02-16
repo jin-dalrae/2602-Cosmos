@@ -52,6 +52,9 @@ export const SF_RICHMOND_SUBTOPICS: SubtopicConfig[] = [
   { subtopic: 'Local restaurants and food — best dim sum on Clement St, new cafes, food trucks, beloved restaurant closures, supporting local businesses, bakery recommendations', prefix: 'fd', count: 15 },
   { subtopic: 'Housing and rent — rent increases, evictions, new construction, landlord issues, housing shortage, ADUs, roommate searches, noise complaints', prefix: 'hs', count: 14 },
   { subtopic: 'Parks and outdoor spaces — Golden Gate Park, Land\'s End trails, Ocean Beach bonfires, dog walking etiquette, playground equipment, foggy morning runs', prefix: 'pr', count: 12 },
+  { subtopic: 'OpenClaw and open-source AI — OpenClaw project, open-source LLMs, AI democratization, local SF hackers building open models, Richmond techies contributing to OpenClaw, community AI meetups, model weights and licensing debates', prefix: 'oc', count: 18 },
+  { subtopic: 'SF startup scene and tech culture — new startups in the Richmond/Sunset corridor, YC batch gossip, co-working spaces, founder burnout, local tech workers commuting from Richmond, startup layoffs impacting the neighborhood, angel investing', prefix: 'st', count: 18 },
+  { subtopic: 'AI impact on daily life — ChatGPT tutoring kids, AI tools for local businesses, job displacement fears, artists vs AI art, using AI for gardening tips, neighborhood Slack bots, deepfakes and local scams, AI in SF schools', prefix: 'ai', count: 18 },
 ]
 
 export async function generateBatch(
@@ -91,7 +94,7 @@ export async function generateDiscussion(
   topic: string
 }> {
   const subtopics = SF_RICHMOND_SUBTOPICS
-  const communityContext = `${topic} — a neighborhood community forum for SF Richmond District, San Francisco. The Richmond is a foggy, diverse neighborhood between Golden Gate Park and the Presidio, known for great Asian food on Clement Street, Ocean Beach sunsets, and a strong sense of community. Residents are a mix of longtime families, young professionals, students, and retirees.`
+  const communityContext = `${topic} — a neighborhood community forum for SF Richmond District, San Francisco. The Richmond is a foggy, diverse neighborhood between Golden Gate Park and the Presidio, known for great Asian food on Clement Street, Ocean Beach sunsets, and a strong sense of community. Residents are a mix of longtime families, young professionals, tech workers, students, and retirees. Many residents work in SF's AI and startup scene, and projects like OpenClaw have roots in the local tech community. The neighborhood sits at the intersection of traditional community life and Silicon Valley's tech culture.`
 
   const allPosts: RawPost[] = []
   const completedTopics: string[] = []
