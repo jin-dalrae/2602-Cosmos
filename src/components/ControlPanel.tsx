@@ -2,7 +2,6 @@ export interface SceneSettings {
   edgeOpacity: number      // 0–1
   distance: number         // 10–30, actual sphere radius = distance * 5 + 50
   damping: number          // orbit controls damping factor
-  overview: number         // 0 = immersive (inside sphere), 1 = bird's eye (above sphere)
   articleScale: number     // 0.5–2, scales the opened article size
 }
 
@@ -10,7 +9,6 @@ export const DEFAULT_SETTINGS: SceneSettings = {
   edgeOpacity: 0.08,
   distance: 20,
   damping: 0.05,
-  overview: 0,
   articleScale: 1,
 }
 

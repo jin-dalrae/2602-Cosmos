@@ -39,7 +39,7 @@ function ScaledSphere({ targetRadius, children }: { targetRadius: number; childr
   return <group ref={groupRef}>{children}</group>
 }
 
-function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick, damping = 0, focusTarget, pendingAutoSelect, overview = 0 }: {
+function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick, damping = 0, focusTarget, pendingAutoSelect }: {
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
   onCameraChange?: (theta: number, phi: number) => void
   onCanvasDragStart?: () => void
@@ -47,7 +47,6 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   damping?: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
-  overview?: number
 }) {
   const { camera, gl } = useThree()
   const callbackRef = useRef(onOrbitEnd)
@@ -59,8 +58,8 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
 
   // Camera rotation (euler angles)
   const rotation = useRef({ theta: 0, phi: Math.PI / 2 })
-  // Velocity for damping
-  const velocity = useRef({ theta: 0, phi: 0 })
+  // Velocity for damping (screen-space angular rates: h=horizontal, v=vertical)
+  const velocity = useRef({ h: 0, v: 0 })
   // Drag state
   const dragging = useRef(false)
   const lastPointer = useRef({ x: 0, y: 0 })
@@ -69,6 +68,34 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   const goalRotation = useRef({ theta: 0, phi: Math.PI / 2 })
   const animating = useRef(false)
 
+  // Screen-space rotation helper: avoids gimbal lock near poles
+  const _lookDir = useRef(new THREE.Vector3())
+  const _worldUp = new THREE.Vector3(0, 1, 0)
+  const _right = useRef(new THREE.Vector3())
+  const _qH = useRef(new THREE.Quaternion())
+  const _qV = useRef(new THREE.Quaternion())
+  const _sph = useRef(new THREE.Spherical())
+
+  function applyScreenSpaceRotation(h: number, v: number) {
+    const { theta, phi } = rotation.current
+    _lookDir.current.set(
+      Math.sin(phi) * Math.sin(theta),
+      Math.cos(phi),
+      Math.sin(phi) * Math.cos(theta),
+    ).normalize()
+
+    _right.current.crossVectors(_worldUp, _lookDir.current).normalize()
+    if (_right.current.lengthSq() < 0.001) _right.current.set(1, 0, 0)
+
+    _qH.current.setFromAxisAngle(_worldUp, h)
+    _qV.current.setFromAxisAngle(_right.current, v)
+    _lookDir.current.applyQuaternion(_qH.current).applyQuaternion(_qV.current).normalize()
+
+    _sph.current.setFromVector3(_lookDir.current)
+    rotation.current.theta = _sph.current.theta
+    rotation.current.phi = THREE.MathUtils.clamp(_sph.current.phi, 0.1, Math.PI - 0.1)
+  }
+
   // When focusTarget changes, rotate to look at it
   useEffect(() => {
     if (!focusTarget) return
@@ -76,12 +103,9 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
     if (target.length() < 0.001) return
 
     const spherical = new THREE.Spherical().setFromVector3(target)
-    const basePhi = THREE.MathUtils.lerp(Math.PI / 2, 0.15, overview)
-    const compensatedPhi = spherical.phi - basePhi + Math.PI / 2
-
-    goalRotation.current = { theta: spherical.theta, phi: compensatedPhi }
+    goalRotation.current = { theta: spherical.theta, phi: spherical.phi }
     animating.current = true
-  }, [focusTarget, overview])
+  }, [focusTarget])
 
   // Pointer event handlers for drag rotation
   const didDrag = useRef(false)
@@ -96,7 +120,7 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
       didDrag.current = false
       startPos.current = { x: e.clientX, y: e.clientY }
       lastPointer.current = { x: e.clientX, y: e.clientY }
-      velocity.current = { theta: 0, phi: 0 }
+      velocity.current = { h: 0, v: 0 }
       animating.current = false
     }
 
@@ -118,16 +142,11 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
 
       if (!didDrag.current) return
 
-      // Grab-and-drag: drag direction = content movement direction
+      // Screen-space rotation: horizontal around world Y, vertical around camera right
       const speed = 0.002
-      velocity.current.theta = -dx * speed
-      velocity.current.phi = -dy * speed
-
-      rotation.current.theta += velocity.current.theta
-      rotation.current.phi = THREE.MathUtils.clamp(
-        rotation.current.phi + velocity.current.phi,
-        0.1, Math.PI - 0.1,
-      )
+      velocity.current.h = dx * speed
+      velocity.current.v = -dy * speed
+      applyScreenSpaceRotation(velocity.current.h, velocity.current.v)
     }
 
     const onUp = () => {
@@ -191,28 +210,19 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
       }
     }
 
-    // Apply damping when not dragging
+    // Apply damping when not dragging (fast decay for minimal coast)
     if (!dragging.current && damping > 0) {
-      const decay = 1 - damping * 2
-      velocity.current.theta *= decay
-      velocity.current.phi *= decay
-      if (Math.abs(velocity.current.theta) > 0.0001 || Math.abs(velocity.current.phi) > 0.0001) {
-        rotation.current.theta += velocity.current.theta
-        rotation.current.phi = THREE.MathUtils.clamp(
-          rotation.current.phi + velocity.current.phi,
-          0.1, Math.PI - 0.1,
-        )
+      const decay = 1 - damping * 8
+      velocity.current.h *= decay
+      velocity.current.v *= decay
+      if (Math.abs(velocity.current.h) > 0.0001 || Math.abs(velocity.current.v) > 0.0001) {
+        applyScreenSpaceRotation(velocity.current.h, velocity.current.v)
       }
     }
 
-    const basePhi = THREE.MathUtils.lerp(Math.PI / 2, 0.15, overview)
-    const effectivePhi = THREE.MathUtils.clamp(
-      basePhi + (rotation.current.phi - Math.PI / 2),
-      0.1, Math.PI - 0.1,
-    )
+    const effectivePhi = THREE.MathUtils.clamp(rotation.current.phi, 0.1, Math.PI - 0.1)
 
     camera.position.set(0, 0, 0)
-    // lookAt distance doesn't matter for direction — use 100 for numerical stability
     const lookTarget = new THREE.Vector3().setFromSpherical(
       new THREE.Spherical(100, effectivePhi, rotation.current.theta)
     )
@@ -238,7 +248,6 @@ export default function Canvas3D({ children, settings, articleRadius, focusTarge
         damping={settings.damping}
         focusTarget={focusTarget}
         pendingAutoSelect={pendingAutoSelect}
-        overview={settings.overview}
       />
 
       <ambientLight intensity={0.6} />
