@@ -1,188 +1,110 @@
 # COSMOS
 
-### AI-Powered 3D Community Discussion Platform
+### A Planetarium for Discourse
 
-> *"You just read. The interface reads you back."*
-
-![COSMOS Demo](demo.gif)
+> *Feeds are linear. Conversations are not. What if you could stand inside a discussion and just look around?*
 
 ---
 
-## The Problem
+## The Problem with Feeds
 
-Online discussion is fundamentally broken.
+Every major platform — Reddit, Twitter, Hacker News — reduces conversation to a single stream. One post after another. Scroll down. Scroll more. An algorithm decides what's next.
 
-**800-comment Reddit threads** are walls of text. Twitter is outrage loops. Hacker News buries dissent under karma. Every major platform reduces discourse to a flat, chronological feed optimized for engagement, not understanding.
+This linearity does two things to readers:
 
-The real structure of a conversation — who agrees, who disagrees, what's assumed but never said, where the gaps are — is **completely invisible.**
+1. **It makes you passive.** You don't explore — you receive. The feed moves, you absorb. There's no agency in scrolling.
+2. **It hides the landscape.** A 500-comment thread has structure — clusters of agreement, pockets of dissent, bridges between worldviews, gaps where no one has spoken. Feeds flatten all of this into a wall of text sorted by karma.
 
-| What users see | What actually exists |
-|---|---|
-| Linear thread of comments | Multi-dimensional argument graph |
-| Popularity-sorted opinions | Ideological clusters with bridge posts |
-| "Hot takes" and reactions | Hidden assumptions driving disagreement |
-| Echo chambers by default | Unexpressed perspectives (gaps) |
-
-The result: **polarization, misunderstanding, and the illusion of consensus.** Platforms designed for engagement actively prevent collective reasoning.
+The result: you finish reading a thread and have no idea what the conversation actually looked like. You saw a slice. The feed chose which slice.
 
 ---
 
-## The Solution
+## What COSMOS Does Differently
 
-**COSMOS transforms community discussions into spatial, navigable 3D constellations** where AI reveals the invisible architecture of human argument.
+COSMOS places you **inside** a sphere of content. Every post is a card on the sphere's inner surface. You stand at the center and look outward.
 
-Every post is analyzed by Claude for **stance, emotion, hidden assumptions, and logical ancestry** — then placed in 3D space where position carries meaning:
+You don't scroll. You don't click. You **drag to look around**, and whatever your gaze lands on appears in a sidebar panel. Content arrives as you move — a continuous stream shaped by your curiosity, not an algorithm.
 
-| Axis | What It Encodes |
-|------|----------------|
-| **X** | Ideology spectrum (opposing poles of opinion) |
-| **Y** | Abstraction level (personal anecdote ↔ systemic analysis) |
-| **Z** | Novelty (common talking point ↔ original insight) |
+This changes three things:
 
-Posts cluster by worldview. Edges reveal logical relationships. Gaps expose missing voices. Bridge posts connect opposing camps.
+**There is no "next."** A feed has a single direction: down. A sphere has every direction. Two readers starting from the same point will browse completely different paths based on which way they drift. Your curiosity determines the sequence.
 
-**The interface doesn't just display discussion — it understands it.**
+**Topics become places.** Community posts about neighborhood gardening occupy one region of the sphere. AI and startup discussions live on another. You can feel the conceptual distance between them. Drag slowly from one zone toward another and you'll pass through bridge posts — ideas that connect both worlds. The topology of the conversation becomes something you navigate, not something described to you.
+
+**Friction disappears.** Every click is a micro-decision: "Is this worth my attention?" Browse mode removes that question entirely. You look, and content is there. The 30-degree detection cone is generous on purpose — this isn't precision targeting, it's peripheral awareness. You don't select articles. You wander through them.
 
 ---
 
-## Product
+## The Design Philosophy
 
-### 3D Constellation View
+### Why a sphere? Why inside it?
 
-The core experience. A spatial galaxy of community posts, each floating as an interactive card in 3D space.
+A sphere has no edges, no top, no bottom. There's no privileged position. Content doesn't have a rank or an order — it has a *location*. Being inside it makes the content feel like an environment rather than a list. You're surrounded by voices, like standing in a room full of conversations that you can tune into by turning your head.
 
-- **Orbit, zoom, explore** — full 3D navigation with smooth spherical camera arcs
-- **Click to expand** — reveals full analysis: content, stance, emotion, hidden assumptions, logical chain, related posts
-- **Emotion-coded cards** — 9 distinct color palettes (passionate, analytical, frustrated, hopeful, fearful, sarcastic, neutral, aggressive, empathetic)
-- **Relationship edges** — colored lines encoding agreement, disagreement, builds-upon, tangent, rebuttal
-- **Vote and reply** inline — participate in the discussion from within the constellation
-- **Ambient atmosphere** — particle dust, cluster groupings, warm museum-like lighting
+### Why no clicks in browse mode?
 
-### Article List View
+Clicking interrupts flow. It forces a binary decision at every moment: engage or keep scrolling. That decision fatigue is what makes feeds exhausting. By removing the click — by making gaze the only interaction — the reader stays in a state of continuous awareness. You're not making choices about individual posts. You're drifting through an information space, and things catch your attention naturally.
 
-A parallel `/list` page for traditional browsing:
+### Why multiple topic regions?
 
-- Full-screen scrollable dark interface
-- Sort by votes, emotion, or author
-- Expand/collapse cards to read full content, assumptions, themes, and replies
-- Vote and reply inline
-- Seamless navigation between Map and List via react-router
+COSMOS currently renders SF Richmond neighborhood discussions alongside AI and startup content on the same sphere. This isn't a category system. It's a bet on **accidental drift** — the idea that the most valuable discovery happens when you didn't plan to find something. You came to read about community gardening, but your gaze drifted 90 degrees and landed on a post about how AI is changing local businesses. That moment of unplanned connection is what feeds can never produce, because feeds only show you what they think you want.
 
-### Compose & Participate
+### What changes about the reader?
 
-- Submit new posts or reply to existing ones
-- Posts receive AI classification into the existing discussion structure
-- Positioned in the constellation based on semantic analysis
+The goal isn't productivity or entertainment. It's **awareness**. A feed reader finishes a thread knowing what was popular. A COSMOS reader finishes a session knowing the shape of the conversation — where the clusters are, where the gaps are, how ideas relate across the full landscape. They saw the whole room, not just the loudest voice in it.
 
 ---
 
-## Technology
+## How It Works
 
-### Five-Agent AI Pipeline
+### The Browsing Experience
 
-The engine that transforms raw discussion into spatial meaning — orchestrated through Claude, streamed in real-time via SSE.
+- **Drag** to look around the sphere — content cards float on the inner surface
+- **Browse mode** — the nearest article auto-opens in a sidebar panel as you drag. No clicking needed.
+- **Compact cards** stay compact on the sphere — they're landmarks, not content. The sidebar is where you read.
+- **Smooth cross-fade** between articles as your gaze drifts — content transitions feel continuous, not discrete
+- **Emotion-coded colors** — 9 palettes (passionate, analytical, frustrated, hopeful, fearful, sarcastic, neutral, aggressive, empathetic) give you a feel for the conversation's mood at a glance
 
-```
-   Community Topic or Reddit URL
-              |
-   +----------v-----------+
-   |   GENERATOR AGENT    |   Synthesizes 100+ realistic community voices
-   |   (Claude Haiku)     |   across 7 subtopics with diverse stances
-   +----------+-----------+
-              |
-   +----------v-----------+
-   |  CARTOGRAPHER AGENT  |   Batch-enriches every post:
-   |  (Claude Haiku)      |   stance, emotion, assumptions, evidence,
-   |  30 posts/batch      |   logical chain, cross-group perception,
-   |  3x parallel         |   3D embedding hints, relationships
-   +----------+-----------+
-              |
-   +----------v-----------+
-   |   ARCHITECT AGENT    |   Computes spatial layout:
-   |   (Claude Haiku)     |   3D positions, cluster boundaries,
-   |                      |   bridge posts, gap analysis
-   +----------+-----------+
-              |
-   +----------v-----------+          +-------------------+
-   |   3D CONSTELLATION   |          | CLASSIFIER AGENT  |
-   |   renders live       |<-------->| classifies user   |
-   |   as pipeline runs   |          | posts in real-time |
-   +----------------------+          +-------------------+
-                                     +-------------------+
-                                     |  NARRATOR AGENT   |
-                                     |  contextual Q&A   |
-                                     |  about the layout  |
-                                     +-------------------+
-```
+### AI-Powered Spatial Layout
 
-**Key capabilities:**
-- **Incremental rendering** — 3D scene appears after the first batch; posts stream in as they're enriched
-- **Parallel batch processing** — Cartographer runs up to 3 batches concurrently
-- **Robust JSON recovery** — handles truncated API responses, retries with exponential backoff
-- **Two-layer caching** — local file + Firestore prevents re-processing
-- **SSE streaming** — live progress events (Connecting → Harvesting → Enriching → Architecting → Ready)
+Every post is analyzed by Claude for stance, emotion, hidden assumptions, and logical relationships — then positioned on the sphere where location carries meaning:
 
-### Cartographer Output Per Post
+| Dimension | What It Encodes |
+|-----------|----------------|
+| **Longitude** | Opinion spectrum — opposing views sit across the sphere |
+| **Latitude** | Abstraction — personal stories near the equator, systemic analysis toward the poles |
+| **Clustering** | Worldview — posts that share assumptions naturally group together |
 
-Each post is enriched with:
+Gaps on the sphere surface reveal missing perspectives. Bridge posts sit between clusters, connecting opposing camps.
+
+### Five-Agent Pipeline
 
 ```
-{
-  stance:          "pro-density-housing"
-  emotion:         "passionate"
-  post_type:       "argument" | "evidence" | "anecdote" | "question" | "rebuttal" | "meta"
-  core_claim:      "Rent control helps existing tenants but discourages new construction"
-  assumptions:     ["Free market produces optimal housing", "New construction lowers prices"]
-  evidence_cited:  ["Stanford 2019 rent control study"]
-  importance:      8
-  logical_chain:   { builds_on: ["post_42"], root_assumption: "Markets self-correct", depth: 3 }
-  perceived_by:    { renters: "dismissive of lived experience", developers: "economically sound" }
-  embedding_hint:  { opinion_axis: 0.6, abstraction: 0.8, novelty: 0.3 }
-  relationships:   [{ target: "post_17", type: "disagrees", strength: 0.9, reason: "..." }]
-}
+   Topic or Reddit URL
+          |
+   [GENERATOR]      Synthesizes 150+ realistic community voices
+          |          across 10 subtopics with diverse stances
+   [CARTOGRAPHER]   Enriches every post: stance, emotion,
+          |          assumptions, logical chain, relationships
+   [ARCHITECT]      Computes spatial positions — clusters,
+          |          bridges, gaps — on the sphere surface
+   [CLASSIFIER]     Classifies new user posts in real-time
+   [NARRATOR]       Answers questions about the discussion
 ```
 
-### 3D Rendering Stack
+The constellation builds incrementally — cards appear as they're analyzed, not after the full pipeline completes.
 
-| Component | What It Does |
-|-----------|-------------|
-| **Canvas3D** | Three.js canvas via React Three Fiber. PerspectiveCamera, OrbitControls, spherical interpolation for camera arcs |
-| **PostCard3D** | HTML-in-3D cards (300px compact → 800px expanded). Emotion-colored, with drag passthrough for orbit controls |
-| **EdgeNetwork** | Vertex-colored line segments encoding 5 relationship types. Proximity-filtered to reduce clutter |
-| **AmbientDust** | 200 floating particles, gold/cream, slow rotation — depth and atmosphere |
-| **ControlPanel** | Runtime scene tuning: FOV, camera distance, damping, spread scale, nearby card count |
+### What the AI Extracts Per Post
 
-**Performance:** Only 15–30 nearest cards rendered at any time (distance-culled from camera anchor). Selected post always included.
-
-### Perception Layer (Built, Integration-Ready)
-
-A complete perception system for reading the reader:
-
-| Signal | Technology | What It Detects |
-|--------|-----------|-----------------|
-| **Gaze** | WebGazer.js | Eye fixation zones (read, agree, disagree, deeper, flip, wander) |
-| **Face** | MediaPipe FaceMesh | Head nod/shake, lean in/back, brow furrow/raise, smile |
-| **Fusion** | Custom engine | Combines gaze + face + mouse into unified `IntentSignal` with confidence |
-| **Adaptation** | Behavioral model | Learns user patterns, transitions through observe → model → predict → refine |
-
-**Fusion rules (examples):**
-- Eyes + mouse same area → high-confidence intent
-- Brow furrow + steady gaze → engaged (not confused)
-- Lean back + gaze wander → pulling away
-- Head nod + eyes right → agree
-
-### Anti-Echo Chamber Engine
-
-When integrated with the swipe-card mode:
-
-| You swipe... | Next card is... |
-|-------------|----------------|
-| Agree (right) | Strongest counterargument |
-| Disagree (left) | Someone who agrees with what you rejected |
-| Flip (up) | Post from the opposing cluster |
-| Deeper (down) | Logical parent in the argument chain |
-
-**The system actively fights filter bubbles by design.**
+```
+stance:          "pro-density-housing"
+emotion:         "passionate"
+core_claim:      "Rent control helps tenants but discourages construction"
+assumptions:     ["Free market produces optimal housing"]
+logical_chain:   { builds_on: ["post_42"], root: "Markets self-correct" }
+perceived_by:    { renters: "dismissive", developers: "economically sound" }
+relationships:   [{ target: "post_17", type: "disagrees", strength: 0.9 }]
+```
 
 ---
 
@@ -191,99 +113,43 @@ When integrated with the swipe-card mode:
 ```
 cosmos/
 ├── src/
-│   ├── App.tsx                          # Router: Loading → Map (/) or List (/list)
+│   ├── App.tsx                          # Entry: landing → loading → experience
 │   ├── components/
-│   │   ├── CosmosExperience.tsx         # 3D orchestrator (state, selection, voting)
+│   │   ├── CosmosExperience.tsx         # Master orchestrator — state, browse mode, selection
+│   │   ├── DetailPanel.tsx              # Sidebar panel for browse mode reading
+│   │   ├── ComposeOverlay.tsx           # New post / reply modal
+│   │   ├── ControlPanel.tsx             # Scene settings
 │   │   ├── MapMode/
-│   │   │   ├── Canvas3D.tsx             # Three.js canvas, camera, orbit controls
-│   │   │   ├── PostCard3D.tsx           # Interactive 3D cards (compact/expanded)
+│   │   │   ├── Canvas3D.tsx             # Three.js canvas, quaternion camera rotation
+│   │   │   ├── PostCard3D.tsx           # Compact 3D cards with emotion colors
 │   │   │   ├── EdgeNetwork.tsx          # Relationship edge visualization
 │   │   │   └── AmbientDust.tsx          # Atmospheric particle field
-│   │   ├── ListView/
-│   │   │   ├── ArticleList.tsx          # Scrollable flat list with sorting
-│   │   │   └── ArticleListPage.tsx      # /list route page wrapper
-│   │   ├── ComposeOverlay.tsx           # New post / reply modal
-│   │   ├── ControlPanel.tsx             # Scene settings UI
-│   │   ├── UI/                          # Loading, calibration, debug screens
+│   │   ├── ListView/                    # Traditional scrollable article list
 │   │   └── shared/EmotionPalette.ts     # Color system (9 emotions, 5 edge types)
 │   ├── hooks/
-│   │   ├── useCosmosData.ts             # SSE client for pipeline streaming
-│   │   ├── useGazeTracking.ts           # WebGazer integration
-│   │   ├── useFusedInput.ts             # Multi-modal intent fusion
-│   │   └── useAdaptiveModel.ts          # Behavioral pattern learning
+│   │   └── useCosmosData.ts             # SSE client for pipeline streaming
 │   └── lib/
 │       ├── agents/                      # 5 Claude-powered specialist agents
-│       │   ├── base.ts                  # SDK wrapper, JSON recovery, retry logic
-│       │   ├── generator.ts             # Discussion synthesis
-│       │   ├── cartographer.ts          # Post enrichment (batch, parallel)
-│       │   ├── architect.ts             # Spatial layout computation
-│       │   ├── classifier.ts            # Real-time user post classification
-│       │   └── narrator.ts              # Contextual Q&A guide
-│       ├── orchestrator.ts              # Pipeline coordination + SSE emission
-│       ├── types.ts                     # Full domain model (292 lines)
-│       ├── antiEchoChamber.ts           # Filter bubble avoidance logic
-│       ├── fusionLayer.ts               # Perception signal fusion
-│       └── adaptiveModel.ts             # User behavior adaptation
+│       ├── orchestrator.ts              # Pipeline coordination + SSE
+│       └── types.ts                     # Domain model
 ├── server/
-│   ├── index.ts                         # Express 5 server
-│   └── routes/
-│       ├── process.ts                   # SSE pipeline endpoint
-│       ├── classify.ts                  # Post classification API
-│       └── narrate.ts                   # Narrator Q&A API
+│   ├── index.ts                         # Express server
+│   └── routes/                          # API endpoints (process, classify, narrate)
 └── package.json
 ```
-
----
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 19 | TypeScript 5.9 | Vite 7 |
-| **3D Engine** | Three.js 0.182 | @react-three/fiber | @react-three/drei |
-| **Animation** | Framer Motion 12 | @use-gesture/react |
-| **Routing** | react-router-dom 7 |
+| **Frontend** | React 19, TypeScript 5.9, Vite 7 |
+| **3D Engine** | Three.js, @react-three/fiber, @react-three/drei |
+| **Animation** | Framer Motion, @use-gesture/react |
 | **Styling** | Tailwind CSS 4 |
-| **AI** | Claude API (Anthropic SDK) | Haiku 4.5 (speed) | Opus 4.6 (quality) |
-| **Backend** | Express 5 | SSE streaming |
-| **Perception** | WebGazer.js | MediaPipe FaceMesh |
-| **Cache** | Local file + Firebase/Firestore |
-
----
-
-## Market Opportunity
-
-Every platform with community discussion faces the same structural problem. COSMOS's technology applies to:
-
-| Vertical | Application |
-|----------|------------|
-| **Social platforms** | Reddit, HN, community forums — visualize discussion structure, surface hidden assumptions |
-| **Enterprise** | Slack, Teams, internal forums — understand org-wide sentiment and argument patterns |
-| **Civic tech** | Town halls, public comments, parliamentary debates — make democratic discourse navigable |
-| **Education** | Classroom discussions, peer review — reveal reasoning structure to students |
-| **Media** | Comment sections, reader feedback — extract signal from noise |
-| **Research** | Qualitative data analysis — spatial mapping of interview/survey responses |
-
-**The wedge:** Community platforms with 100+ comment threads where users currently give up reading.
-
----
-
-## What Makes This Different
-
-**1. Structural revelation, not sentiment analysis.**
-We don't just detect "positive/negative." We extract hidden assumptions, logical ancestry, cross-group perception, and argument gaps — the *why* behind disagreement.
-
-**2. Spatial meaning, not decoration.**
-Position in the 3D space encodes ideology, abstraction level, and novelty. Clusters and gaps emerge from the argument structure, not arbitrary grouping.
-
-**3. Perception-aware interaction.**
-The interface reads the reader. Eye tracking + facial expression + mouse behavior fuse into a unified intent signal that adapts what you see next.
-
-**4. Anti-echo by architecture.**
-The anti-echo chamber engine is structural, not algorithmic. Counterarguments surface based on *argument graph traversal*, not engagement metrics.
-
-**5. Incremental, streaming AI.**
-Results appear as they're computed. No waiting for a full pipeline to finish — the constellation builds itself in real time.
+| **AI** | Claude API (Anthropic SDK) — Haiku for speed, Opus for quality |
+| **Backend** | Express 5, SSE streaming |
+| **Hosting** | Firebase Hosting |
+| **Cache** | Local file + Firestore |
 
 ---
 
@@ -292,32 +158,23 @@ Results appear as they're computed. No waiting for a full pipeline to finish —
 ```bash
 npm install
 cp .env.example .env   # add your ANTHROPIC_API_KEY
-npm run dev             # starts both client (Vite) and server (Express)
+npm run dev             # starts client (5173) and server (3001)
 ```
 
-Open `http://localhost:5173` — the pipeline starts automatically on the demo topic (SF Richmond community).
-
-Navigate to `/list` for the article list view.
+Open `http://localhost:5173` — the pipeline runs automatically on the demo topic (SF Richmond + AI/Startup).
 
 ---
 
-## API
+## Where This Goes
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/process` | SSE stream — runs full pipeline for a topic or Reddit URL |
-| `POST` | `/api/classify` | Classify a user-submitted post into existing layout |
-| `POST` | `/api/narrate` | Narrator answers questions about the discussion |
-| `GET` | `/api/health` | Health check |
+The sphere works for any body of discourse. Research papers cluster by methodology. News articles arrange by ideology. Public comments on a city proposal reveal the actual fault lines of disagreement. Classroom discussions show students the structure of their own reasoning.
+
+But the core idea stays the same: **stop reading feeds. Start standing inside conversations.**
 
 ---
 
-## Built At
-
-**Anthropic Claude Hackathon** — 3 days, February 2026.
+Built at the **Anthropic Claude Hackathon** — February 2026.
 
 By **Rae**.
-
----
 
 MIT License
