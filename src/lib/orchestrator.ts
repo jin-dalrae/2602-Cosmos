@@ -173,6 +173,60 @@ function applyRepulsion(posts: CosmosPost[], minAngle: number, iterations: numbe
   }
 }
 
+/**
+ * Cluster posts by their ID prefix (e.g. "gd", "sc", "ai") and distribute
+ * each cluster around its own center on the sphere. O(n), no AI needed.
+ *
+ * Algorithm:
+ * 1. Group posts by 2-letter ID prefix → subtopic clusters
+ * 2. Space cluster centers evenly on the equatorial band via golden angle
+ * 3. Within each cluster, spread posts in a tight local patch using Fibonacci
+ * 4. Light repulsion pass to prevent overlap
+ */
+function clusterLayout(posts: EnrichedPost[]): CosmosPost[] {
+  // Group by prefix
+  const groups = new Map<string, EnrichedPost[]>()
+  for (const p of posts) {
+    const prefix = p.id.replace(/[0-9]+$/, '') // e.g. "gd01" → "gd"
+    if (!groups.has(prefix)) groups.set(prefix, [])
+    groups.get(prefix)!.push(p)
+  }
+
+  const clusterKeys = [...groups.keys()]
+  const numClusters = clusterKeys.length
+  const golden = Math.PI * (3 - Math.sqrt(5))
+
+  const cosmosPosts: CosmosPost[] = []
+
+  clusterKeys.forEach((key, ci) => {
+    const members = groups.get(key)!
+    // Cluster center: spread around sphere using golden angle, stay in equatorial band
+    const centerTheta = golden * ci * 3.5 // wider spread between clusters
+    const centerPhi = Math.PI * 0.35 + (ci / Math.max(numClusters - 1, 1)) * Math.PI * 0.3 // phi 63°–117° band
+
+    // Local Fibonacci spiral within cluster — tight radius (~15° patch)
+    const clusterSpread = 0.26 // radians (~15°), how wide each cluster is
+    const localFibs = fibonacciSphere(members.length)
+
+    members.forEach((post, i) => {
+      // Map local Fibonacci point to a small patch around cluster center
+      const localTheta = localFibs[i].theta * clusterSpread * 0.5
+      const localPhi = (localFibs[i].phi - Math.PI / 2) * clusterSpread * 0.5
+
+      const theta = centerTheta + localTheta
+      const phi = Math.max(0.35, Math.min(Math.PI - 0.35, centerPhi + localPhi))
+
+      const position = sphericalToCartesian(theta, phi, ARTICLE_RADIUS)
+      cosmosPosts.push({ ...post, position })
+    })
+  })
+
+  // Light repulsion — just prevent direct overlap (~6°)
+  applyRepulsion(cosmosPosts, 0.10, 6)
+
+  return cosmosPosts
+}
+
 function buildPartialLayout(
   enrichedPosts: EnrichedPost[],
   topic: string,
@@ -180,16 +234,7 @@ function buildPartialLayout(
   labels: Labels,
   startTime: number
 ): CosmosLayout {
-  const total = enrichedPosts.length
-  const fibs = fibonacciSphere(total)
-  const cosmosPosts: CosmosPost[] = enrichedPosts.map((post, index) => {
-    const { theta, phi } = fibs[index]
-    const position = sphericalToCartesian(theta, phi, ARTICLE_RADIUS)
-    return { ...post, position }
-  })
-
-  // Push apart any posts that are too close (min ~15° / 0.26 rad, 8 iterations)
-  applyRepulsion(cosmosPosts, 0.45, 12)
+  const cosmosPosts = clusterLayout(enrichedPosts)
 
   return {
     topic,
@@ -330,26 +375,22 @@ export async function processDiscussion(
   // Use the architect's refined_positions when available, fallback to Fibonacci spiral
   progress('Assembling COSMOS...', 90)
 
-  const totalPosts = allEnriched.length
-  const finalFibs = fibonacciSphere(totalPosts)
-  const cosmosPosts: CosmosPost[] = allEnriched.map((post, index) => {
-    const refined = architectResult.refined_positions[post.id]
+  // Use cluster layout as base, then overlay architect refinements where available
+  const cosmosPosts = clusterLayout(allEnriched)
+
+  // Apply architect refinements for posts that have them
+  for (const cp of cosmosPosts) {
+    const refined = architectResult.refined_positions[cp.id]
     if (refined) {
-      // Architect gives [theta_deg, phi_deg, r_offset]
       const thetaRad = (refined[0] * Math.PI) / 180
       const phiRad = (refined[1] * Math.PI) / 180
-      const r = ARTICLE_RADIUS * (1 + refined[2] * 0.05) // subtle depth variation
-      const position = sphericalToCartesian(thetaRad, phiRad, r)
-      return { ...post, position }
+      const r = ARTICLE_RADIUS * (1 + refined[2] * 0.05)
+      cp.position = sphericalToCartesian(thetaRad, phiRad, r)
     }
-    // Fallback to Fibonacci spiral for posts missing from architect output
-    const { theta, phi } = finalFibs[index]
-    const position = sphericalToCartesian(theta, phi, ARTICLE_RADIUS)
-    return { ...post, position }
-  })
+  }
 
-  // Push apart posts that are too close (min ~15° / 0.26 rad, 10 iterations)
-  applyRepulsion(cosmosPosts, 0.45, 12)
+  // Light repulsion to prevent overlap after architect adjustments (~6°)
+  applyRepulsion(cosmosPosts, 0.10, 6)
 
   // Convert cluster centers and gap positions to sphere coordinates
   const layout: CosmosLayout = {
