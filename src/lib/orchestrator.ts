@@ -70,12 +70,11 @@ function isUrl(input: string): boolean {
  * Process a discussion — from a Reddit URL or a topic string.
  * If a Reddit URL is provided but fetching fails, falls back to AI-generated discussion.
  */
-// Sphere layout constants
-const RADIUS_MIN = 16  // newest posts (closest to user at center)
-const RADIUS_MAX = 24  // oldest posts (furthest from user)
+// Sphere layout constants - articles on sphere surface around user at origin
+const ARTICLE_RADIUS = 150  // radius of sphere where articles live
 
 /**
- * Convert spherical coords (theta in radians, phi in radians, radius) to cartesian [x, y, z].
+ * Convert spherical coords (theta, phi in radians, radius) to cartesian [x, y, z].
  */
 function sphericalToCartesian(theta: number, phi: number, r: number): [number, number, number] {
   return [
@@ -86,7 +85,7 @@ function sphericalToCartesian(theta: number, phi: number, r: number): [number, n
 }
 
 /**
- * Generate N points uniformly distributed on a sphere using the Fibonacci spiral.
+ * Generate N points uniformly distributed on a sphere using Fibonacci spiral.
  * Returns array of { theta, phi } in radians.
  */
 function fibonacciSphere(n: number): { theta: number; phi: number }[] {
@@ -106,6 +105,74 @@ function fibonacciSphere(n: number): { theta: number; phi: number }[] {
  * Used for partial/incremental rendering before the architect runs.
  * Posts are placed on a sphere: surface position from semantic hints, radius from age (index order).
  */
+/**
+ * Repulsion pass: push articles apart on the sphere surface so they don't visually stack.
+ * Ensures a minimum angular separation between any two posts.
+ */
+function applyRepulsion(posts: CosmosPost[], minAngle: number, iterations: number): void {
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < posts.length; i++) {
+      for (let j = i + 1; j < posts.length; j++) {
+        const a = posts[i].position
+        const b = posts[j].position
+        const aLen = Math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2) || 1
+        const bLen = Math.sqrt(b[0] ** 2 + b[1] ** 2 + b[2] ** 2) || 1
+        // Normalized directions
+        const ax = a[0] / aLen, ay = a[1] / aLen, az = a[2] / aLen
+        const bx = b[0] / bLen, by = b[1] / bLen, bz = b[2] / bLen
+        // Angular distance via dot product
+        const dot = ax * bx + ay * by + az * bz
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot)))
+
+        if (angle < minAngle) {
+          // Push apart along the great circle between them
+          // Cross product gives the rotation axis
+          const cx = ay * bz - az * by
+          const cy = az * bx - ax * bz
+          const cz = ax * by - ay * bx
+          const cLen = Math.sqrt(cx ** 2 + cy ** 2 + cz ** 2)
+
+          if (cLen < 0.0001) continue // nearly identical or opposite, skip
+
+          // Push each post away by half the deficit
+          const push = (minAngle - angle) * 0.5
+          // Perpendicular direction on sphere for each post
+          // For post A: push away from B (toward the tangent direction)
+          const tAx = by * az - bz * ay, tAy = bz * ax - bx * az, tAz = bx * ay - by * ax
+          const tALen = Math.sqrt(tAx ** 2 + tAy ** 2 + tAz ** 2) || 1
+          // For post B: opposite direction
+          const rA = aLen, rB = bLen
+
+          posts[i].position = [
+            (ax + (tAx / tALen) * push) * rA,
+            (ay + (tAy / tALen) * push) * rA,
+            (az + (tAz / tALen) * push) * rA,
+          ] as [number, number, number]
+          // Re-normalize to sphere
+          const newALen = Math.sqrt(posts[i].position[0] ** 2 + posts[i].position[1] ** 2 + posts[i].position[2] ** 2) || 1
+          posts[i].position = [
+            (posts[i].position[0] / newALen) * rA,
+            (posts[i].position[1] / newALen) * rA,
+            (posts[i].position[2] / newALen) * rA,
+          ]
+
+          posts[j].position = [
+            (bx - (tAx / tALen) * push) * rB,
+            (by - (tAy / tALen) * push) * rB,
+            (bz - (tAz / tALen) * push) * rB,
+          ] as [number, number, number]
+          const newBLen = Math.sqrt(posts[j].position[0] ** 2 + posts[j].position[1] ** 2 + posts[j].position[2] ** 2) || 1
+          posts[j].position = [
+            (posts[j].position[0] / newBLen) * rB,
+            (posts[j].position[1] / newBLen) * rB,
+            (posts[j].position[2] / newBLen) * rB,
+          ]
+        }
+      }
+    }
+  }
+}
+
 function buildPartialLayout(
   enrichedPosts: EnrichedPost[],
   topic: string,
@@ -117,12 +184,12 @@ function buildPartialLayout(
   const fibs = fibonacciSphere(total)
   const cosmosPosts: CosmosPost[] = enrichedPosts.map((post, index) => {
     const { theta, phi } = fibs[index]
-    // Age-based radius: earlier index = older = further from user
-    const ageRatio = total > 1 ? index / (total - 1) : 0.5
-    const r = RADIUS_MIN + ageRatio * (RADIUS_MAX - RADIUS_MIN)
-    const position = sphericalToCartesian(theta, phi, r)
+    const position = sphericalToCartesian(theta, phi, ARTICLE_RADIUS)
     return { ...post, position }
   })
+
+  // Push apart any posts that are too close (min ~15° / 0.26 rad, 8 iterations)
+  applyRepulsion(cosmosPosts, 0.45, 12)
 
   return {
     topic,
@@ -260,33 +327,43 @@ export async function processDiscussion(
 
   // ── Step 4: Merge ──
   // Convert architect's spherical [theta_deg, phi_deg, r_offset] → cartesian
-  // Radius is determined by post age (index order), with architect's r_offset as fine-tuning
+  // Use the architect's refined_positions when available, fallback to Fibonacci spiral
   progress('Assembling COSMOS...', 90)
 
   const totalPosts = allEnriched.length
   const finalFibs = fibonacciSphere(totalPosts)
   const cosmosPosts: CosmosPost[] = allEnriched.map((post, index) => {
+    const refined = architectResult.refined_positions[post.id]
+    if (refined) {
+      // Architect gives [theta_deg, phi_deg, r_offset]
+      const thetaRad = (refined[0] * Math.PI) / 180
+      const phiRad = (refined[1] * Math.PI) / 180
+      const r = ARTICLE_RADIUS * (1 + refined[2] * 0.05) // subtle depth variation
+      const position = sphericalToCartesian(thetaRad, phiRad, r)
+      return { ...post, position }
+    }
+    // Fallback to Fibonacci spiral for posts missing from architect output
     const { theta, phi } = finalFibs[index]
-    const ageRatio = totalPosts > 1 ? index / (totalPosts - 1) : 0.5
-    const r = RADIUS_MIN + ageRatio * (RADIUS_MAX - RADIUS_MIN)
-    const position = sphericalToCartesian(theta, phi, r)
+    const position = sphericalToCartesian(theta, phi, ARTICLE_RADIUS)
     return { ...post, position }
   })
 
-  // Convert cluster centers and gap positions from spherical to cartesian
-  const RADIUS_MID = (RADIUS_MIN + RADIUS_MAX) / 2
+  // Push apart posts that are too close (min ~15° / 0.26 rad, 10 iterations)
+  applyRepulsion(cosmosPosts, 0.45, 12)
+
+  // Convert cluster centers and gap positions to sphere coordinates
   const layout: CosmosLayout = {
     topic,
     source: input,
     clusters: architectResult.clusters.map((c) => {
       const thetaRad = (c.center[0] * Math.PI) / 180
       const phiRad = (c.center[1] * Math.PI) / 180
-      return { ...c, center: sphericalToCartesian(thetaRad, phiRad, RADIUS_MID) }
+      return { ...c, center: sphericalToCartesian(thetaRad, phiRad, ARTICLE_RADIUS) }
     }),
     gaps: architectResult.gaps.map((g) => {
       const thetaRad = (g.position[0] * Math.PI) / 180
       const phiRad = (g.position[1] * Math.PI) / 180
-      return { ...g, position: sphericalToCartesian(thetaRad, phiRad, RADIUS_MID) }
+      return { ...g, position: sphericalToCartesian(thetaRad, phiRad, ARTICLE_RADIUS) }
     }),
     posts: cosmosPosts,
     bridge_posts: architectResult.bridge_posts,

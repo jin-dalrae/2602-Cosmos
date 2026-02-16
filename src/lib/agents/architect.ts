@@ -14,9 +14,9 @@ COORDINATE SYSTEM (spherical):
 
 SPATIAL RULES:
 1. Identify 3-7 natural clusters based on stance + themes + embedding_hints.
-2. Cluster centers must be at least 40° apart in angular distance from each other.
-3. Individual posts should be within ~15° of their cluster center.
-4. Use the FULL range of theta (0–360°) and phi (30–150°) — don't clump everything in one region.
+2. Cluster centers must be at least 80° apart in angular distance from each other. Spread clusters WIDELY across the entire sphere.
+3. Individual posts should be within ~30-50° of their cluster center — spread them out generously, don't stack them.
+4. Use the FULL range of theta (0–360°) and phi (30–150°) — maximize coverage of the sphere surface. Actively avoid clumping.
 5. Posts with similar semantic content should be CLOSE together on the sphere surface. Distance = dissimilarity.
 6. Bridge posts (those that span multiple clusters) should be positioned between relevant clusters on the sphere.
 7. Gaps should be in empty angular regions where missing perspectives would logically exist.
