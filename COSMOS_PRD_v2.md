@@ -54,17 +54,36 @@ Each article is a unique vector on the sphere surface:
 ### 1.5 Camera Model
 
 - Camera is **fixed at origin (0, 0, 0)** — never moves
-- **Drag** rotates the view direction (theta + phi)
+- **Drag** rotates the view direction using **screen-space quaternion rotation** (horizontal around world Y axis, vertical around camera's right vector). This avoids gimbal lock near the poles — no barrel-roll effect when looking straight up/down.
+- **Drag direction** is FPS-style: drag right → look left, drag up → look down (opposite to drag direction)
 - **Scroll** adjusts FOV (30°–100°, default 70°) — zoom without moving camera
 - **Overview slider** shifts the base elevation angle (phi) from equator to pole
 - Camera always looks outward (away from origin, toward articles)
-- Damping provides momentum after releasing drag
+- Damping provides momentum after releasing drag, with **fast velocity decay** (`1 - damping * 8`) to feel like panning rather than spinning
 
 ### 1.6 Navigation
 
 - **Click a card** → opens it, camera animates to face it
 - **Drag while card is open** → closes current card, slides camera, opens nearest card in new view direction
 - **Random post selected on first load** so user sees content immediately
+
+### 1.7 Browse Mode
+
+A toggle mode where dragging around the sphere shows the nearest post's content in a **fixed 2D sidebar panel** (DetailPanel) instead of expanding cards in 3D. Reduces eye fatigue since compact cards stay compact on the sphere — only the sidebar content changes.
+
+- **Toggle:** "Browse" button in bottom-right action bar (gold border when active, muted when inactive)
+- **Nearest-post tracking:** Every 50ms during camera rotation, computes the look direction and finds the post with the highest dot product (within 25° threshold). Updates the sidebar to show that post.
+- **3D expansion suppressed:** In browse mode, no cards expand. The browsed card gets a subtle glow highlight (`isBrowsed` prop on PostCard3D).
+- **Sidebar:** Reuses the existing `DetailPanel` component (right-side panel, 420px wide) showing full article content, assumptions, themes, replies, connected posts, vote/reply buttons.
+- **Navigation within sidebar:** Clicking a reply or connected post in the sidebar updates `browsedPostId` (navigates within the panel without 3D expansion).
+- **Handler overrides:**
+  - `handleOrbitEnd` early-returns (no auto-select logic)
+  - `handleCanvasDragStart` is a no-op (no pending auto-select)
+  - `handleSelect` updates `browsedPostId` instead of `selectedPostId`
+  - `handleCanvasClick` does not close the sidebar
+- **Entering browse mode:** clears `selectedPostId` (closes any expanded card)
+- **Exiting browse mode:** clears `browsedPostId` (removes sidebar)
+- **New post submission:** When a post is submitted in browse mode, sets `browsedPostId` to the new post (shows it in the sidebar instead of expanding in 3D)
 
 ---
 
@@ -139,12 +158,13 @@ This ensures posts from any source (old data, new data, user posts) sit on the s
 
 | Control | Action |
 |---------|--------|
-| **Drag** | Rotate view direction (theta + phi) |
-| **Click card** | Select/open article |
+| **Drag** | Rotate view direction (screen-space quaternion rotation, FPS-style: opposite to drag direction) |
+| **Click card** | Select/open article (in browse mode: updates sidebar instead) |
 | **Scroll** | Zoom FOV (30°–100°) |
+| **Browse toggle** | Toggle browse mode (sidebar shows nearest post content while dragging) |
 | **Overview slider** | Tilt viewing elevation from equator (0) to top pole (1) |
 | **FOV slider** | Field of view (30–90°, default 70°) |
-| **Damping slider** | Rotation momentum (0–0.2) |
+| **Damping slider** | Rotation momentum (0–0.2, fast decay) |
 
 ---
 
@@ -154,11 +174,12 @@ This ensures posts from any source (old data, new data, user posts) sit on the s
 |------|------|
 | `src/lib/agents/architect.ts` | Architect prompt — spherical coordinate system |
 | `src/lib/orchestrator.ts` | Position conversion (spherical→cartesian), Fibonacci fallback |
-| `src/components/MapMode/Canvas3D.tsx` | RotationCamera (fixed at origin, looks outward), FOV zoom |
+| `src/components/MapMode/Canvas3D.tsx` | RotationCamera (fixed at origin, screen-space quaternion rotation), FOV zoom |
 | `src/components/ControlPanel.tsx` | Scene settings (overview, FOV, damping) |
-| `src/components/CosmosExperience.tsx` | Layout, position normalization, post selection, auto-navigate |
+| `src/components/CosmosExperience.tsx` | Layout, position normalization, post selection, auto-navigate, browse mode |
+| `src/components/DetailPanel.tsx` | Right-side sidebar for browse mode (full article content, replies, connected posts) |
 | `src/components/MapMode/AmbientDust.tsx` | Background star particles on dome |
-| `src/components/MapMode/PostCard3D.tsx` | Card rendering (sprite mode), drag passthrough |
+| `src/components/MapMode/PostCard3D.tsx` | Card rendering (sprite mode), drag passthrough, `isBrowsed` highlight |
 | `src/components/MapMode/EdgeNetwork.tsx` | Constellation edge lines |
 
 ---

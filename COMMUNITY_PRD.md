@@ -55,11 +55,13 @@ The current default generates a neighborhood forum for the SF Richmond District.
 
 ### Camera Behavior
 
-- **OrbitControls** with configurable damping (default 0.05). Min distance 2, max distance 60.
-- **Orbit target is always world center (0, 0, 0).** The target never moves to the card.
-- **Rotate-to-select:** When a card is clicked, the camera **rotates around the origin** so that the card aligns with the camera's line of sight. The card is NOT pinned to screen center during the orbit -- everything in the scene moves together as the camera orbits. Animation lerp factor is **0.04** for smooth centering.
-- **Camera distance slider applies as a relative offset** (`+=delta`) so it does not undo in-progress camera animations.
-- **Camera distance adjusts distanceFactor proportionally** so cards maintain the same visual size regardless of zoom level. The formula is `distanceFactor = 3 * (cameraDistance / 22)`.
+- **Camera is fixed at the origin (0, 0, 0)** — the user is inside a sphere looking outward. There are no orbit controls or external camera movement.
+- **Drag** rotates the view direction using **screen-space quaternion rotation** (horizontal around world Y axis, vertical around camera's right vector). This avoids gimbal lock near the poles — no barrel-roll effect when looking up/down.
+- **Drag direction** is FPS-style: drag right → look left, drag up → look down (opposite to drag direction).
+- **Damping** with fast velocity decay (`1 - damping * 8`) provides minimal momentum — feels like panning, not spinning.
+- **Rotate-to-select:** When a card is clicked, the camera **animates to face it** via theta/phi interpolation (lerp factor 0.08).
+- **Scroll** adjusts FOV (30°–100°, default 70°) — zoom without moving camera.
+- **Overview slider** shifts the base elevation angle from equator to pole.
 
 ### Coordinate System
 
@@ -203,6 +205,17 @@ This creates a fluid "drag to browse" experience.
 - Clicking a reply within an expanded card navigates to (selects) that reply's post.
 - Clicking a connected post navigates to that post.
 - Both trigger the camera orbit animation.
+
+### Browse Mode
+
+A toggle mode for reduced eye fatigue — dragging shows the nearest post in a fixed sidebar instead of expanding 3D cards.
+
+- **Toggle:** "Browse" button in bottom-right action bar (gold border when active, muted when inactive).
+- **Nearest-post tracking:** Every 50ms, finds the post closest to the camera's look direction (within 25°) and displays it in the sidebar.
+- **3D cards stay compact:** No expansion in browse mode. The browsed card gets a subtle glow highlight.
+- **Sidebar:** `DetailPanel` component (420px right-side panel) shows full content, assumptions, themes, replies, connected posts, vote/reply buttons.
+- **In-sidebar navigation:** Clicking replies or connected posts updates the sidebar without 3D expansion.
+- **Entering:** Clears any expanded card. **Exiting:** Clears the sidebar.
 
 ---
 
@@ -367,7 +380,7 @@ Combines enriched post data with architect positions into the final `CosmosLayou
 
 ### Compose Overlay
 
-- Centered modal, 420px wide, dark card (`#2E2A28`), rounded corners (16px).
+- Centered modal, 420px wide, **light mode** card, rounded corners (16px).
 - Author field (defaults to "Anonymous") and content textarea.
 - Gold submit button (`#D4B872`), disabled state uses muted gray.
 - Backdrop blur overlay dismisses on click.
@@ -456,7 +469,7 @@ cosmos/
       CosmosExperience.tsx    # Main 3D scene orchestrator
       ControlPanel.tsx        # Scene settings UI
       ComposeOverlay.tsx      # New post / reply modal
-      DetailPanel.tsx         # (Legacy) detail side panel
+      DetailPanel.tsx         # Right-side sidebar for browse mode (full article content)
       MapMode/
         Canvas3D.tsx          # Three.js canvas, camera, orbit controls
         PostCard3D.tsx        # 3D card component (compact + expanded)
