@@ -51,6 +51,25 @@ function CosmosApp() {
                 <p style={{ fontFamily: 'system-ui', color: '#9E9589', fontSize: 13, maxWidth: 320, textAlign: 'center', lineHeight: 1.5, marginBottom: 24 }}>
                   {error}
                 </p>
+                <button
+                  onClick={() => {
+                    started.current = false
+                    window.location.reload()
+                  }}
+                  style={{
+                    padding: '10px 24px',
+                    borderRadius: 10,
+                    border: '1px solid #D4B872',
+                    backgroundColor: 'rgba(212, 184, 114, 0.15)',
+                    color: '#D4B872',
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Try Again
+                </button>
               </div>
             )}
           </motion.div>
