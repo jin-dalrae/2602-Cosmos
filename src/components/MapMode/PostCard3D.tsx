@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { Html } from '@react-three/drei'
 import type { CosmosPost } from '../../lib/types'
 import { getEmotionColors, EDGE_COLORS } from '../shared/EmotionPalette'
@@ -21,9 +21,10 @@ interface PostCard3DProps {
   userVote?: 'up' | 'down' | null
   onReply?: (postId: string) => void
   onDragWhileSelected?: () => void
+  onHover?: (hovering: boolean) => void
 }
 
-export default function PostCard3D({
+function PostCard3D({
   post,
   isSelected,
   isBrowsed = false,
@@ -40,6 +41,7 @@ export default function PostCard3D({
   userVote,
   onReply,
   onDragWhileSelected,
+  onHover,
 }: PostCard3DProps) {
   const [hovered, setHovered] = useState(false)
   const colors = getEmotionColors(post.emotion)
@@ -117,15 +119,15 @@ export default function PostCard3D({
         sprite
         distanceFactor={isSelected ? 75 * articleScale : 50}
         occlude={false}
-        style={{ pointerEvents: 'auto', width: isSelected ? 550 : 300, transition: 'width 0.35s ease' }}
+        style={{ pointerEvents: 'auto', width: isSelected ? 550 : 300 }}
         zIndexRange={isSelected ? [10000, 10000] : [0, 9999]}
       >
         <div
           ref={cardRef}
           onClick={handleClick}
           onWheel={isSelected ? (e) => e.stopPropagation() : undefined}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
+          onMouseEnter={() => { setHovered(true); if (isSelected) onHover?.(true) }}
+          onMouseLeave={() => { setHovered(false); onHover?.(false) }}
           style={{
             width: isSelected ? 550 : 300,
             height: isSelected ? undefined : 200,
@@ -160,10 +162,12 @@ export default function PostCard3D({
                       ? `scale(${0.92 + visibility * 0.1})`
                       : `scale(${0.85 + visibility * 0.15})`,
             animation: isHighlighted ? 'highlightPulse 1s ease-in-out infinite' : undefined,
-            transition: 'width 0.35s ease, max-height 0.35s ease, transform 0.6s ease, box-shadow 0.6s ease, opacity 0.6s ease',
+            transition: 'transform 0.4s ease, opacity 0.4s ease',
             overflow: 'hidden',
             userSelect: 'none',
             position: 'relative',
+            willChange: isSelected || isBrowsed ? 'transform, opacity' : 'auto',
+            contain: isSelected ? undefined : 'layout style paint',
           }}
         >
           {/* Keyframes for highlight animation */}
@@ -179,22 +183,22 @@ export default function PostCard3D({
 
           {/* Header */}
           <div style={{ padding: isSelected ? '20px 24px 16px 28px' : '10px 12px 8px 14px' }}>
-            <div style={{ fontSize: isSelected ? 24 : 16, fontWeight: 600, lineHeight: 1.3, marginBottom: isSelected ? 10 : 5 }}>
+            <div style={{ fontSize: isSelected ? 24 : 19, fontWeight: 600, lineHeight: 1.3, marginBottom: isSelected ? 10 : 5 }}>
               {post.core_claim}
             </div>
             <div style={{
               display: 'flex', alignItems: 'center', gap: isSelected ? 10 : 4,
-              fontSize: isSelected ? 14 : 9, color: `${colors.text}99`, fontFamily: 'system-ui, sans-serif',
+              fontSize: isSelected ? 14 : 11, color: `${colors.text}99`, fontFamily: 'system-ui, sans-serif',
             }}>
               <span style={{ fontWeight: 600 }}>{post.author}</span>
               <span style={{
                 padding: '2px 8px', borderRadius: 5,
-                backgroundColor: `${colors.accent}18`, fontSize: isSelected ? 13 : 10, color: colors.accent,
+                backgroundColor: `${colors.accent}18`, fontSize: isSelected ? 13 : 12, color: colors.accent,
               }}>{post.emotion}</span>
               {post.post_type && (
                 <span style={{
                   padding: '2px 8px', borderRadius: 5,
-                  backgroundColor: `${colors.accent}10`, fontSize: isSelected ? 13 : 10, color: `${colors.text}88`,
+                  backgroundColor: `${colors.accent}10`, fontSize: isSelected ? 13 : 12, color: `${colors.text}88`,
                 }}>{post.post_type}</span>
               )}
               <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
@@ -212,7 +216,7 @@ export default function PostCard3D({
                     <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>
                 </span>
-                <span style={{ fontSize: isSelected ? 14 : 11, fontWeight: 600, minWidth: isSelected ? 20 : 16, textAlign: 'center' }}>{post.upvotes}</span>
+                <span style={{ fontSize: isSelected ? 14 : 13, fontWeight: 600, minWidth: isSelected ? 20 : 16, textAlign: 'center' }}>{post.upvotes}</span>
                 <span
                   onClick={(e) => { e.stopPropagation(); onVote?.(post.id, 'down') }}
                   style={{
@@ -376,3 +380,24 @@ export default function PostCard3D({
     </group>
   )
 }
+
+export default memo(PostCard3D, (prev, next) => {
+  // Only re-render when meaningful props change
+  if (prev.post.id !== next.post.id) return false
+  if (prev.isSelected !== next.isSelected) return false
+  if (prev.isBrowsed !== next.isBrowsed) return false
+  if (prev.isAnimatingIn !== next.isAnimatingIn) return false
+  if (prev.isHighlighted !== next.isHighlighted) return false
+  if (prev.dimmed !== next.dimmed) return false
+  if (prev.articleScale !== next.articleScale) return false
+  if (prev.userVote !== next.userVote) return false
+  // Quantize visibility — skip re-render for tiny changes
+  const prevV = Math.round((prev.visibility ?? 1) * 5) / 5
+  const nextV = Math.round((next.visibility ?? 1) * 5) / 5
+  if (prevV !== nextV) return false
+  // Position change
+  if (prev.post.position[0] !== next.post.position[0] ||
+      prev.post.position[1] !== next.post.position[1] ||
+      prev.post.position[2] !== next.post.position[2]) return false
+  return true
+})
