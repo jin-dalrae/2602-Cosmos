@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { CosmosPost } from '../lib/types'
 import { getEmotionColors, EDGE_COLORS } from './shared/EmotionPalette'
 
@@ -23,35 +23,43 @@ export default function DetailPanel({
   userVote,
   onReply,
 }: DetailPanelProps) {
-  const colors = getEmotionColors(post.emotion)
+  // Smooth cross-fade when post changes
+  const [displayPost, setDisplayPost] = useState(post)
+  const [fadeState, setFadeState] = useState<'in' | 'out'>('in')
+  const prevIdRef = useRef(post.id)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Fade-in animation when post changes
-  const [animKey, setAnimKey] = useState(post.id)
-  const [fadeIn, setFadeIn] = useState(true)
   useEffect(() => {
-    if (post.id !== animKey) {
-      setFadeIn(false)
-      const t = requestAnimationFrame(() => {
-        setAnimKey(post.id)
-        setFadeIn(true)
-      })
-      return () => cancelAnimationFrame(t)
+    if (post.id !== prevIdRef.current) {
+      prevIdRef.current = post.id
+      setFadeState('out')
+      const t = setTimeout(() => {
+        setDisplayPost(post)
+        if (scrollRef.current) scrollRef.current.scrollTop = 0
+        setFadeState('in')
+      }, 150)
+      return () => clearTimeout(t)
+    } else {
+      setDisplayPost(post)
     }
-  }, [post.id, animKey])
+  }, [post])
+
+  const colors = getEmotionColors(displayPost.emotion)
 
   return (
     <div
       style={{
         position: 'absolute',
-        top: 0,
-        right: 0,
-        width: 420,
-        height: '100%',
+        top: 16,
+        left: 16,
+        bottom: 16,
+        width: 400,
         zIndex: 50,
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: colors.cardBg,
-        boxShadow: '-4px 0 24px rgba(0,0,0,0.3)',
+        boxShadow: '4px 0 32px rgba(0,0,0,0.3)',
+        borderRadius: 20,
         overflow: 'hidden',
       }}
     >
@@ -64,6 +72,7 @@ export default function DetailPanel({
           bottom: 0,
           width: 4,
           backgroundColor: colors.accent,
+          borderRadius: '20px 0 0 20px',
         }}
       />
 
@@ -97,13 +106,14 @@ export default function DetailPanel({
 
       {/* Scrollable content */}
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflowY: 'auto',
           padding: '24px 24px 24px 28px',
-          opacity: fadeIn ? 1 : 0,
-          transform: fadeIn ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 0.2s ease, transform 0.2s ease',
+          opacity: fadeState === 'in' ? 1 : 0,
+          transform: fadeState === 'in' ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 0.15s ease, transform 0.15s ease',
         }}
       >
         {/* Core claim */}
@@ -118,7 +128,7 @@ export default function DetailPanel({
             paddingRight: 32,
           }}
         >
-          {post.core_claim}
+          {displayPost.core_claim}
         </div>
 
         {/* Author + meta row */}
@@ -133,7 +143,7 @@ export default function DetailPanel({
             marginBottom: 20,
           }}
         >
-          <span style={{ fontWeight: 600 }}>{post.author}</span>
+          <span style={{ fontWeight: 600 }}>{displayPost.author}</span>
           <span
             style={{
               padding: '2px 8px',
@@ -143,9 +153,9 @@ export default function DetailPanel({
               color: colors.accent,
             }}
           >
-            {post.emotion}
+            {displayPost.emotion}
           </span>
-          {post.post_type && (
+          {displayPost.post_type && (
             <span
               style={{
                 padding: '2px 8px',
@@ -155,13 +165,13 @@ export default function DetailPanel({
                 color: `${colors.text}88`,
               }}
             >
-              {post.post_type}
+              {displayPost.post_type}
             </span>
           )}
           {/* Votes */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
             <span
-              onClick={() => onVote(post.id, 'up')}
+              onClick={() => onVote(displayPost.id, 'up')}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 26, height: 26, borderRadius: 6,
@@ -176,10 +186,10 @@ export default function DetailPanel({
               </svg>
             </span>
             <span style={{ fontSize: 13, fontWeight: 600, minWidth: 18, textAlign: 'center' }}>
-              {post.upvotes}
+              {displayPost.upvotes}
             </span>
             <span
-              onClick={() => onVote(post.id, 'down')}
+              onClick={() => onVote(displayPost.id, 'down')}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 26, height: 26, borderRadius: 6,
@@ -210,11 +220,11 @@ export default function DetailPanel({
             fontFamily: 'Georgia, "Times New Roman", serif',
           }}
         >
-          {post.content}
+          {displayPost.content}
         </p>
 
         {/* Assumptions */}
-        {post.assumptions.length > 0 && (
+        {displayPost.assumptions.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{
               fontSize: 11, fontFamily: 'system-ui, sans-serif',
@@ -223,7 +233,7 @@ export default function DetailPanel({
             }}>
               Hidden assumptions
             </div>
-            {post.assumptions.map((a, i) => (
+            {displayPost.assumptions.map((a, i) => (
               <div key={i} style={{
                 padding: '8px 12px', marginBottom: 5, borderRadius: 8,
                 backgroundColor: `${colors.accent}10`,
@@ -239,7 +249,7 @@ export default function DetailPanel({
 
         {/* Themes */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 16 }}>
-          {post.themes.map((theme) => (
+          {displayPost.themes.map((theme) => (
             <span key={theme} style={{
               padding: '3px 10px', borderRadius: 10,
               backgroundColor: `${colors.accent}12`,
@@ -306,7 +316,7 @@ export default function DetailPanel({
 
         {/* Reply button */}
         <button
-          onClick={() => onReply(post.id)}
+          onClick={() => onReply(displayPost.id)}
           style={{
             display: 'inline-flex',
             alignItems: 'center',

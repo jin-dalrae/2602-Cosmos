@@ -51,10 +51,10 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
           width: 600,
           maxHeight: 500,
           overflowY: 'auto',
-          backgroundColor: '#2E2A28',
+          backgroundColor: '#FDFBF8',
           borderRadius: 16,
-          border: '1px solid rgba(245, 242, 239, 0.08)',
-          boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+          border: '1px solid #E8E2DA',
+          boxShadow: '0 16px 48px rgba(0, 0, 0, 0.25)',
           padding: '28px 28px 24px',
           fontFamily: 'system-ui, sans-serif',
         }}
@@ -63,7 +63,7 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
         <div style={{
           fontSize: 18,
           fontWeight: 600,
-          color: UI_COLORS.textPrimary,
+          color: '#2A2520',
           marginBottom: 20,
           fontFamily: 'Georgia, serif',
         }}>
@@ -73,7 +73,7 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
         {/* Title (only for new posts) */}
         {mode.type === 'post' && (
           <>
-            <label style={{ fontSize: 12, color: UI_COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+            <label style={{ fontSize: 12, color: '#9E9589', textTransform: 'uppercase', letterSpacing: 1.2 }}>
               Title
             </label>
             <input
@@ -88,9 +88,9 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
                 marginBottom: 16,
                 padding: '10px 14px',
                 borderRadius: 10,
-                border: '1px solid rgba(245, 242, 239, 0.1)',
-                backgroundColor: '#262220',
-                color: UI_COLORS.textPrimary,
+                border: '1px solid #E0D9D0',
+                backgroundColor: '#F5F2EF',
+                color: '#2A2520',
                 fontSize: 16,
                 fontWeight: 600,
                 fontFamily: 'Georgia, serif',
@@ -102,7 +102,7 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
         )}
 
         {/* Author */}
-        <label style={{ fontSize: 12, color: UI_COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+        <label style={{ fontSize: 12, color: '#9E9589', textTransform: 'uppercase', letterSpacing: 1.2 }}>
           Author
         </label>
         <input
@@ -117,9 +117,9 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
             marginBottom: 16,
             padding: '10px 14px',
             borderRadius: 10,
-            border: '1px solid rgba(245, 242, 239, 0.1)',
-            backgroundColor: '#262220',
-            color: UI_COLORS.textPrimary,
+            border: '1px solid #E0D9D0',
+            backgroundColor: '#F5F2EF',
+            color: '#2A2520',
             fontSize: 15,
             fontFamily: 'system-ui, sans-serif',
             outline: 'none',
@@ -128,7 +128,7 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
         />
 
         {/* Content */}
-        <label style={{ fontSize: 12, color: UI_COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+        <label style={{ fontSize: 12, color: '#9E9589', textTransform: 'uppercase', letterSpacing: 1.2 }}>
           {mode.type === 'reply' ? 'Your reply' : 'What\'s on your mind?'}
         </label>
         <textarea
@@ -144,9 +144,9 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
             marginBottom: 20,
             padding: '10px 14px',
             borderRadius: 10,
-            border: '1px solid rgba(245, 242, 239, 0.1)',
-            backgroundColor: '#262220',
-            color: UI_COLORS.textPrimary,
+            border: '1px solid #E0D9D0',
+            backgroundColor: '#F5F2EF',
+            color: '#2A2520',
             fontSize: 15,
             fontFamily: 'Georgia, serif',
             lineHeight: 1.6,
@@ -163,9 +163,9 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
             style={{
               padding: '10px 20px',
               borderRadius: 10,
-              border: '1px solid rgba(245, 242, 239, 0.1)',
+              border: '1px solid #E0D9D0',
               backgroundColor: 'transparent',
-              color: UI_COLORS.textSecondary,
+              color: '#6B6560',
               fontSize: 14,
               fontFamily: 'system-ui, sans-serif',
               cursor: 'pointer',
@@ -180,8 +180,8 @@ export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = 
               padding: '10px 24px',
               borderRadius: 10,
               border: 'none',
-              backgroundColor: canSubmit ? '#D4B872' : '#4A4540',
-              color: canSubmit ? '#1C1A18' : '#6B6560',
+              backgroundColor: canSubmit ? '#D4B872' : '#D0C9BE',
+              color: canSubmit ? '#1C1A18' : '#9E9589',
               fontSize: 14,
               fontWeight: 600,
               fontFamily: 'system-ui, sans-serif',
