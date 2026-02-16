@@ -4,16 +4,14 @@ import { PerspectiveCamera } from '@react-three/drei'
 import type { SceneSettings } from '../ControlPanel'
 import * as THREE from 'three'
 
-// Average radius of the outer article sphere
-const ARTICLE_RADIUS = 20
-
 interface Canvas3DProps {
   children: ReactNode
   settings: SceneSettings
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
-  recenter?: number
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
+  onCameraChange?: (theta: number, phi: number) => void
+  onCanvasDragStart?: () => void
 }
 
 function CameraUpdater({ fov }: { fov: number }) {
@@ -56,26 +54,28 @@ function FovZoom({ fov, onFovChange }: { fov: number; onFovChange: (fov: number)
 }
 
 /**
- * Custom camera controller: camera lives on inner sphere, looks OUTWARD toward articles.
- * Replaces OrbitControls (which always looks toward its target = inward).
- * Drag rotates the camera's position on the inner sphere surface.
+ * Blended camera: overview=0 puts user at origin looking OUT at articles on sphere surface.
+ * overview=1 pulls camera above the sphere for a bird's-eye view.
+ * Drag rotates the camera's look direction / orbit position.
  */
-function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect, recenter, cameraDistance }: {
+function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, damping = 0, focusTarget, pendingAutoSelect, articleRadius, overview = 0 }: {
   onOrbitEnd?: (cameraPos: [number, number, number], cameraDir: [number, number, number]) => void
+  onCameraChange?: (theta: number, phi: number) => void
+  onCanvasDragStart?: () => void
   damping?: number
   focusTarget?: [number, number, number] | null
   pendingAutoSelect?: boolean
-  recenter?: number
-  cameraDistance: number
+  articleRadius: number
+  overview?: number
 }) {
   const { camera, gl } = useThree()
   const callbackRef = useRef(onOrbitEnd)
   callbackRef.current = onOrbitEnd
+  const dragStartRef = useRef(onCanvasDragStart)
+  dragStartRef.current = onCanvasDragStart
 
-  const innerRadius = ARTICLE_RADIUS - cameraDistance
-
-  // Camera spherical position (theta = azimuth, phi = polar angle)
-  const spherical = useRef({ theta: 0, phi: Math.PI / 2 })
+  // Camera rotation (euler angles)
+  const rotation = useRef({ theta: 0, phi: Math.PI / 2 })
   // Velocity for damping
   const velocity = useRef({ theta: 0, phi: 0 })
   // Drag state
@@ -83,34 +83,28 @@ function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
   const lastPointer = useRef({ x: 0, y: 0 })
 
   // Focus animation
-  const goalSpherical = useRef({ theta: 0, phi: Math.PI / 2 })
+  const goalRotation = useRef({ theta: 0, phi: Math.PI / 2 })
   const animating = useRef(false)
 
-  // Smooth radius interpolation
-  const targetRadius = useRef(innerRadius)
-  useEffect(() => { targetRadius.current = innerRadius }, [innerRadius])
-
-  // When focusTarget changes, animate camera to face the card
+  // When focusTarget changes, rotate to look at it
   useEffect(() => {
     if (!focusTarget) return
-    const cardPos = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2])
-    if (cardPos.length() < 0.001) return
+    const target = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2])
+    if (target.length() < 0.001) return
 
-    // Camera should be on inner sphere in the same direction as the card
-    const s = new THREE.Spherical().setFromVector3(cardPos)
-    goalSpherical.current = { theta: s.theta, phi: s.phi }
+    // Convert target position to spherical angles
+    const spherical = new THREE.Spherical().setFromVector3(target)
+
+    // Compensate for overview phi offset so camera actually faces the target
+    // effectivePhi = basePhi + (rotation.phi - PI/2), we need effectivePhi = target.phi
+    // So rotation.phi = target.phi - basePhi + PI/2
+    const basePhi = THREE.MathUtils.lerp(Math.PI / 2, 0.15, overview)
+    const compensatedPhi = spherical.phi - basePhi + Math.PI / 2
+
+    goalRotation.current = { theta: spherical.theta, phi: compensatedPhi }
     animating.current = true
-  }, [focusTarget])
+  }, [focusTarget, overview])
 
-  // Recenter
-  const prevRecenter = useRef(recenter ?? 0)
-  useEffect(() => {
-    if (recenter !== undefined && recenter !== prevRecenter.current) {
-      prevRecenter.current = recenter
-      goalSpherical.current = { theta: 0, phi: Math.PI / 2 }
-      animating.current = true
-    }
-  }, [recenter])
 
   // Pointer event handlers for drag rotation
   useEffect(() => {
@@ -121,6 +115,7 @@ function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
       lastPointer.current = { x: e.clientX, y: e.clientY }
       velocity.current = { theta: 0, phi: 0 }
       animating.current = false
+      dragStartRef.current?.()
     }
 
     const onMove = (e: PointerEvent) => {
@@ -129,15 +124,15 @@ function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
       const dy = e.clientY - lastPointer.current.y
       lastPointer.current = { x: e.clientX, y: e.clientY }
 
-      // Rotate on inner sphere: dx → theta (azimuth), dy → phi (polar)
-      const speed = 0.004
-      velocity.current.theta = -dx * speed
-      velocity.current.phi = dy * speed
+      // Rotate view — sphere content follows the mouse direction
+      const speed = 0.002
+      velocity.current.theta = dx * speed
+      velocity.current.phi = -dy * speed
 
-      spherical.current.theta += velocity.current.theta
-      spherical.current.phi = THREE.MathUtils.clamp(
-        spherical.current.phi + velocity.current.phi,
-        0.3, Math.PI - 0.3,
+      rotation.current.theta += velocity.current.theta
+      rotation.current.phi = THREE.MathUtils.clamp(
+        rotation.current.phi + velocity.current.phi,
+        0.1, Math.PI - 0.1,
       )
     }
 
@@ -181,20 +176,20 @@ function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
     return () => window.removeEventListener('pointerup', handler)
   }, [pendingAutoSelect, camera])
 
-  // Every frame: update camera position on inner sphere + look outward
+  // Every frame: update camera rotation (position stays at origin)
   useFrame(() => {
     // Focus animation
     if (animating.current) {
       const t = 0.08
       // Shortest-path theta interpolation
-      let dTheta = goalSpherical.current.theta - spherical.current.theta
+      let dTheta = goalRotation.current.theta - rotation.current.theta
       // Wrap to [-π, π]
       while (dTheta > Math.PI) dTheta -= Math.PI * 2
       while (dTheta < -Math.PI) dTheta += Math.PI * 2
-      spherical.current.theta += dTheta * t
-      spherical.current.phi += (goalSpherical.current.phi - spherical.current.phi) * t
+      rotation.current.theta += dTheta * t
+      rotation.current.phi += (goalRotation.current.phi - rotation.current.phi) * t
 
-      if (Math.abs(dTheta) < 0.001 && Math.abs(goalSpherical.current.phi - spherical.current.phi) < 0.001) {
+      if (Math.abs(dTheta) < 0.001 && Math.abs(goalRotation.current.phi - rotation.current.phi) < 0.001) {
         animating.current = false
       }
     }
@@ -205,47 +200,55 @@ function SphereCamera({ onOrbitEnd, damping = 0, focusTarget, pendingAutoSelect,
       velocity.current.theta *= decay
       velocity.current.phi *= decay
       if (Math.abs(velocity.current.theta) > 0.0001 || Math.abs(velocity.current.phi) > 0.0001) {
-        spherical.current.theta += velocity.current.theta
-        spherical.current.phi = THREE.MathUtils.clamp(
-          spherical.current.phi + velocity.current.phi,
-          0.3, Math.PI - 0.3,
+        rotation.current.theta += velocity.current.theta
+        rotation.current.phi = THREE.MathUtils.clamp(
+          rotation.current.phi + velocity.current.phi,
+          0.1, Math.PI - 0.1,
         )
       }
     }
 
-    // Smooth radius transition
-    const currentRadius = camera.position.length() || targetRadius.current
-    const r = currentRadius + (targetRadius.current - currentRadius) * 0.1
+    // Camera stays at origin, overview controls elevation (phi)
+    // overview=0: equator (phi=PI/2), overview=1: top pole (phi≈0.15)
+    const basePhi = THREE.MathUtils.lerp(Math.PI / 2, 0.15, overview)
+    const effectivePhi = THREE.MathUtils.clamp(
+      basePhi + (rotation.current.phi - Math.PI / 2),
+      0.1, Math.PI - 0.1,
+    )
 
-    // Set camera position on inner sphere
-    const s = new THREE.Spherical(r, spherical.current.phi, spherical.current.theta)
-    camera.position.setFromSpherical(s)
+    camera.position.set(0, 0, 0)
+    const lookTarget = new THREE.Vector3().setFromSpherical(
+      new THREE.Spherical(articleRadius, effectivePhi, rotation.current.theta)
+    )
+    camera.lookAt(lookTarget)
 
-    // Look outward: toward corresponding point on the outer sphere
-    const outward = camera.position.clone().normalize().multiplyScalar(ARTICLE_RADIUS * 2)
-    camera.lookAt(outward)
+    // Report camera rotation in real-time
+    onCameraChange?.(rotation.current.theta, rotation.current.phi)
   })
 
   return null
 }
 
-export default function Canvas3D({ children, settings, focusTarget, pendingAutoSelect, recenter, onOrbitEnd }: Canvas3DProps) {
-  const innerRadius = ARTICLE_RADIUS - settings.cameraDistance
+export default function Canvas3D({ children, settings, focusTarget, pendingAutoSelect, onOrbitEnd, onCameraChange, onCanvasDragStart }: Canvas3DProps) {
+  const handleFovChange = useCallback((_newFov: number) => { }, [])
 
-  const handleFovChange = useCallback((_newFov: number) => {}, [])
+  // Distance 10 = close (wide FOV 90°), Distance 30 = far (narrow FOV 30°)
+  const fov = 120 - settings.distance * 3
 
   return (
     <Canvas style={{ background: '#262220' }}>
-      <PerspectiveCamera makeDefault fov={settings.fov} position={[0, 0, innerRadius]} />
-      <CameraUpdater fov={settings.fov} />
-      <FovZoom fov={settings.fov} onFovChange={handleFovChange} />
-      <SphereCamera
+      <PerspectiveCamera makeDefault fov={fov} position={[0, 0, 0]} />
+      <CameraUpdater fov={fov} />
+      <FovZoom fov={fov} onFovChange={handleFovChange} />
+      <RotationCamera
         onOrbitEnd={onOrbitEnd}
+        onCameraChange={onCameraChange}
+        onCanvasDragStart={onCanvasDragStart}
         damping={settings.damping}
         focusTarget={focusTarget}
         pendingAutoSelect={pendingAutoSelect}
-        recenter={recenter}
-        cameraDistance={settings.cameraDistance}
+        articleRadius={150}
+        overview={settings.overview}
       />
 
       <ambientLight intensity={0.6} />

@@ -2,18 +2,16 @@ import { useState } from 'react'
 
 export interface SceneSettings {
   edgeOpacity: number      // 0–1
-  fov: number              // camera field of view
+  distance: number         // 10–30, controls perceived distance to articles
   damping: number          // orbit controls damping factor
-  nearbyCount: number      // how many nearby cards to show
-  cameraDistance: number   // gap between inner camera sphere and outer article sphere
+  overview: number         // 0 = immersive (inside sphere), 1 = bird's eye (above sphere)
 }
 
 export const DEFAULT_SETTINGS: SceneSettings = {
   edgeOpacity: 0.08,
-  fov: 60,
+  distance: 20,
   damping: 0.05,
-  nearbyCount: 15,
-  cameraDistance: 10,
+  overview: 0,
 }
 
 interface ControlPanelProps {
@@ -84,29 +82,26 @@ export default function ControlPanel({ settings, onChange }: ControlPanelProps) 
 
       {/* Panel */}
       {open && (
-        <div style={{
-          marginTop: 8, padding: 16, borderRadius: 12, width: 220,
-          backgroundColor: 'rgba(38, 34, 32, 0.95)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid #3A3530',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        }}>
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          style={{
+            marginTop: 8, padding: 16, borderRadius: 12, width: 220,
+            backgroundColor: 'rgba(38, 34, 32, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid #3A3530',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}>
           <div style={{
             fontSize: 10, fontFamily: 'system-ui', color: '#6B6560',
             textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12,
           }}>Scene Controls</div>
 
           <Slider
-            label="Camera Distance"
-            value={settings.cameraDistance}
-            min={2} max={18} step={0.5}
-            onChange={(v) => update('cameraDistance', v)}
-          />
-          <Slider
-            label="Field of View"
-            value={settings.fov}
-            min={30} max={100} step={1}
-            onChange={(v) => update('fov', v)}
+            label="Distance"
+            value={settings.distance}
+            min={10} max={30} step={1}
+            onChange={(v) => update('distance', v)}
           />
           <Slider
             label="Damping"
