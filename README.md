@@ -3,7 +3,7 @@
 ### A Planetarium for Discourse
 
 > *Feeds are linear. Conversations are not. What if you could stand inside a discussion and just look around?*
-
+![COSMOS Demo](demo.gif)
 ---
 
 ## The Problem with Feeds
