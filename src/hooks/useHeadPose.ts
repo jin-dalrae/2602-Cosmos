@@ -6,10 +6,11 @@ interface HeadPose {
   faceDetected: boolean
 }
 
-const EMA_ALPHA = 0.5
-const TARGET_FPS = 30
+const EMA_ALPHA = 0.7 // higher = more responsive, less smooth
+const TARGET_FPS = 60
 const FRAME_INTERVAL = 1000 / TARGET_FPS
-const CALIBRATION_FRAMES = 30 // ~1 second at 30fps
+const CALIBRATION_FRAMES = 15 // ~0.5 second at 30fps
+const RECALIBRATION_ALPHA = 0.005 // slow rolling average for continuous recalibration
 
 /**
  * Extracts head yaw/pitch from MediaPipe FaceLandmarker transformation matrix.
@@ -142,8 +143,8 @@ export default function useHeadPose(videoStream: MediaStream | null): HeadPose {
             const rawYaw = Math.atan2(mat[8], mat[0])
             const rawPitch = Math.asin(Math.max(-1, Math.min(1, -mat[6])))
 
-            // Normalize to roughly [-1, 1] range (±20° head turn = full range)
-            const maxAngle = (20 * Math.PI) / 180
+            // Normalize to roughly [-1, 1] range (±12° head turn = full range)
+            const maxAngle = (12 * Math.PI) / 180
             const normYaw = Math.max(-1, Math.min(1, rawYaw / maxAngle))
             const normPitch = Math.max(-1, Math.min(1, rawPitch / maxAngle))
 
@@ -160,6 +161,11 @@ export default function useHeadPose(videoStream: MediaStream | null): HeadPose {
               setPose({ yaw: 0, pitch: 0, faceDetected: true })
               return
             }
+
+            // Rolling recalibration: slowly drift neutral toward current reading
+            // This adapts to posture changes over time (leaning, slouching, shifting)
+            neutralYaw.current += (normYaw - neutralYaw.current) * RECALIBRATION_ALPHA
+            neutralPitch.current += (normPitch - neutralPitch.current) * RECALIBRATION_ALPHA
 
             // Subtract neutral offset so resting position = center
             const calibratedYaw = Math.max(-1, Math.min(1, normYaw - neutralYaw.current))

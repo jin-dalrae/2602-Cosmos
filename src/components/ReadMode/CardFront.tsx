@@ -1,5 +1,6 @@
 import type { CosmosPost } from '../../lib/types'
 import { getEmotionColors } from '../shared/EmotionPalette'
+import { formatTimeAgo } from '../../lib/timeFormat'
 
 interface CardFrontProps {
   post: CosmosPost
@@ -96,12 +97,15 @@ export default function CardFront({ post }: CardFrontProps) {
             </span>
           </div>
 
-          {/* Author + upvotes */}
+          {/* Author + timestamp + upvotes */}
           <div
             className="flex items-center gap-3 text-xs"
             style={{ color: `${colors.text}AA`, fontSize: 11 }}
           >
             <span>{post.author}</span>
+            {formatTimeAgo(post.created_at) && (
+              <span style={{ color: `${colors.text}66` }}>{formatTimeAgo(post.created_at)}</span>
+            )}
             <span className="flex items-center gap-0.5">
               <svg
                 width="12"

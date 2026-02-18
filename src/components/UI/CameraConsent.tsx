@@ -220,12 +220,14 @@ export default function CameraConsent({ onAccept, onDecline }: CameraConsentProp
               fontFamily: 'system-ui, sans-serif',
               fontSize: 11,
               color: '#5A5550',
-              lineHeight: 1.4,
+              lineHeight: 1.5,
               textAlign: 'center',
               marginTop: 16,
             }}
           >
-            You can turn this off anytime with the Gaze button
+            No images, video, or personal data are stored or sent to any server.
+            Only your head direction is used to navigate the sphere.
+            You can turn this off anytime with the Gaze button.
           </p>
         </div>
       </motion.div>

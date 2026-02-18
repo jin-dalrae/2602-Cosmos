@@ -1,5 +1,22 @@
 import { useState, useCallback, useRef } from 'react'
-import type { CosmosLayout } from '../lib/types'
+import type { CosmosLayout, CosmosPost } from '../lib/types'
+import { API_BASE } from '../lib/api'
+
+/** Map topic strings to static CDN JSON paths (pre-baked layouts) */
+const STATIC_LAYOUTS: Record<string, string> = {
+  'SF Richmond': '/data/sf-richmond.json',
+}
+
+function toStaticKey(topic: string): string | null {
+  // Direct match
+  if (STATIC_LAYOUTS[topic]) return STATIC_LAYOUTS[topic]
+  // Case-insensitive match
+  const lower = topic.toLowerCase()
+  for (const [key, path] of Object.entries(STATIC_LAYOUTS)) {
+    if (key.toLowerCase() === lower) return path
+  }
+  return null
+}
 
 interface CosmosDataReturn {
   layout: CosmosLayout | null
@@ -15,9 +32,48 @@ interface CosmosDataReturn {
 }
 
 /**
- * SSE client hook that calls the Express backend POST /api/process.
- * Reads streaming SSE events from the response and updates progress state.
- * The final event (percent=100) contains the layout in a `layout` field.
+ * Fetch user-created posts from MongoDB and merge them into the layout.
+ * Runs after the base layout is loaded so new community posts appear.
+ */
+async function mergeUserPosts(
+  baseLayout: CosmosLayout,
+  signal: AbortSignal
+): Promise<CosmosLayout> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/posts/${encodeURIComponent(baseLayout.topic)}`,
+      { signal }
+    )
+    if (!res.ok) return baseLayout
+
+    const { posts } = (await res.json()) as { posts: CosmosPost[] }
+    if (!posts || posts.length === 0) return baseLayout
+
+    // Deduplicate by id — user posts override if already present
+    const existingIds = new Set(baseLayout.posts.map((p) => p.id))
+    const newPosts = posts.filter((p) => !existingIds.has(p.id))
+    if (newPosts.length === 0) return baseLayout
+
+    console.log(`[useCosmosData] Merged ${newPosts.length} user posts`)
+    return {
+      ...baseLayout,
+      posts: [...baseLayout.posts, ...newPosts],
+      metadata: {
+        ...baseLayout.metadata,
+        total_posts: baseLayout.metadata.total_posts + newPosts.length,
+      },
+    }
+  } catch {
+    // Network error or aborted — return layout as-is
+    return baseLayout
+  }
+}
+
+/**
+ * Data loading hook with three-tier fallback:
+ *   1. Static CDN (pre-baked JSON in public/data/) — instant, <100ms
+ *   2. MongoDB (GET /api/layout/:topic) — fast if DB is warm
+ *   3. SSE pipeline (POST /api/process) — full AI generation, slowest
  */
 export default function useCosmosData(): CosmosDataReturn {
   const [layout, setLayout] = useState<CosmosLayout | null>(null)
@@ -46,14 +102,71 @@ export default function useCosmosData(): CosmosDataReturn {
     setError(null)
     setIsLoading(true)
     setIsRefining(false)
-    setProgress({ stage: 'Connecting...', percent: 0 })
+    setProgress({ stage: 'Loading...', percent: 0 })
 
     ;(async () => {
-      // Track whether we received any layout data (local var, not stale closure)
+      const topic = body.topic
+
+      // ── Tier 1: Static CDN (pre-baked layout) ──
+      // For pre-baked topics, CDN is the canonical source — skip MongoDB/SSE entirely
+      if (topic) {
+        const staticPath = toStaticKey(topic)
+        if (staticPath) {
+          try {
+            const res = await fetch(staticPath, { signal: abortController.signal })
+            if (res.ok) {
+              const data = await res.json() as CosmosLayout
+              console.log('[useCosmosData] Loaded from CDN:', staticPath)
+              // Show CDN layout immediately, then merge user posts in background
+              setLayout(data)
+              setIsLoading(false)
+              setProgress({ stage: 'Ready', percent: 100 })
+              mergeUserPosts(data, abortController.signal).then((merged) => {
+                if (!abortController.signal.aborted && merged !== data) {
+                  setLayout(merged)
+                }
+              })
+              return
+            }
+          } catch {
+            // CDN fetch failed — fall through to MongoDB
+          }
+          if (abortController.signal.aborted) return
+        }
+      }
+
+      // ── Tier 2: MongoDB stored layout (non-pre-baked topics only) ──
+      if (topic) {
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/layout/${encodeURIComponent(topic)}`,
+            { signal: abortController.signal }
+          )
+          if (res.ok) {
+            const data = await res.json() as CosmosLayout
+            console.log('[useCosmosData] Loaded from MongoDB:', topic)
+            setLayout(data)
+            setIsLoading(false)
+            setProgress({ stage: 'Ready', percent: 100 })
+            // Merge any user posts stored separately
+            mergeUserPosts(data, abortController.signal).then((merged) => {
+              if (!abortController.signal.aborted && merged !== data) {
+                setLayout(merged)
+              }
+            })
+            return
+          }
+        } catch {
+          // Network error or aborted — fall through
+        }
+        if (abortController.signal.aborted) return
+      }
+
+      // ── Tier 3: Full SSE pipeline (AI generation) ──
       let receivedLayout = false
 
       try {
-        const response = await fetch('/api/process', {
+        const response = await fetch(`${API_BASE}/api/process`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

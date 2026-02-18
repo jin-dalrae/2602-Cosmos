@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { CosmosPost } from '../lib/types'
 import { getEmotionColors, EDGE_COLORS } from './shared/EmotionPalette'
+import { formatTimeAgo } from '../lib/timeFormat'
 
 interface DetailPanelProps {
   post: CosmosPost
@@ -112,8 +113,8 @@ export default function DetailPanel({
           overflowY: 'auto',
           padding: '24px 24px 24px 28px',
           opacity: fadeState === 'in' ? 1 : 0,
-          transform: fadeState === 'in' ? 'translateY(0)' : 'translateY(8px)',
-          transition: 'opacity 0.15s ease, transform 0.15s ease',
+          transform: fadeState === 'in' ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
+          transition: 'opacity 0.15s ease-out, transform 0.15s ease-out',
         }}
       >
         {/* Core claim */}
@@ -144,6 +145,11 @@ export default function DetailPanel({
           }}
         >
           <span style={{ fontWeight: 600 }}>{displayPost.author}</span>
+          {formatTimeAgo(displayPost.created_at) && (
+            <span style={{ fontSize: 12, color: `${colors.text}55` }}>
+              {formatTimeAgo(displayPost.created_at)}
+            </span>
+          )}
           <span
             style={{
               padding: '2px 8px',
@@ -291,6 +297,11 @@ export default function DetailPanel({
                     <span style={{ fontSize: 13, fontWeight: 600, color: colors.text, fontFamily: 'system-ui' }}>
                       {reply.author}
                     </span>
+                    {formatTimeAgo(reply.created_at) && (
+                      <span style={{ fontSize: 11, color: `${colors.text}55`, fontFamily: 'system-ui' }}>
+                        {formatTimeAgo(reply.created_at)}
+                      </span>
+                    )}
                     <span style={{
                       padding: '2px 6px', borderRadius: 5,
                       backgroundColor: `${replyColors.accent}18`,

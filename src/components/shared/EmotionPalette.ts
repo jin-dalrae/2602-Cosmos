@@ -34,7 +34,6 @@ export const EDGE_COLORS: Record<RelationshipType, string> = {
 
 export const BG_DARK = '#262220'       // warm dark walnut
 export const BG_DARKER = '#1C1A18'     // deeper walnut
-export const BG_GRADIENT = `linear-gradient(180deg, ${BG_DARK} 0%, ${BG_DARKER} 100%)`
 
 // ═══ Cluster Label Colors (muted, warm) ═══
 

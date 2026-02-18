@@ -1,6 +1,8 @@
 import { useCallback, useState, useMemo, useEffect, useRef, startTransition } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import type { CosmosLayout, CosmosPost, ClassifiedPost } from '../lib/types'
+import { API_BASE } from '../lib/api'
 import Canvas3D from './MapMode/Canvas3D'
 import PostCard3D from './MapMode/PostCard3D'
 import EdgeNetwork from './MapMode/EdgeNetwork'
@@ -8,16 +10,16 @@ import AmbientDust from './MapMode/AmbientDust'
 import ComposeOverlay from './ComposeOverlay'
 import DetailPanel from './DetailPanel'
 import ControlPanel, { DEFAULT_SETTINGS, type SceneSettings } from './ControlPanel'
-import MiniMap from './UI/MiniMap'
 import CameraConsent from './UI/CameraConsent'
 import useGazeTracking from '../hooks/useGazeTracking'
 import useHeadPose from '../hooks/useHeadPose'
 import FacePreview from './UI/FacePreview'
+import { GazeLearner } from '../lib/gazeLearner'
 
 type GazeMode = 'off' | 'consent' | 'active'
 
 type ComposingState =
-  | { type: 'post'; initialContent: string; initialAuthor: string; initialTitle: string }
+  | { type: 'post' }
   | { type: 'reply'; parentId: string }
   | null
 
@@ -27,7 +29,13 @@ interface CosmosExperienceProps {
 }
 
 export default function CosmosExperience({ layout, isRefining }: CosmosExperienceProps) {
-  const [posts, setPosts] = useState<CosmosPost[]>(() => [...layout.posts])
+  const [posts, setPosts] = useState<CosmosPost[]>(() =>
+    layout.posts.map(p => ({
+      ...p,
+      // TEST: assign random timestamps 0–60 days ago to visualize temporal shells
+      created_at: p.created_at ?? new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString(),
+    }))
+  )
   // Select a random post on first load
   const [selectedPostId, setSelectedPostId] = useState<string | null>(() => {
     if (layout.posts.length === 0) return null
@@ -63,11 +71,19 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const [composing, setComposing] = useState<ComposingState>(null)
   const [sceneSettings, setSceneSettings] = useState<SceneSettings>(DEFAULT_SETTINGS)
 
+  // ── Auto-open: whether dragging/gazing auto-opens articles ──
+  const [autoOpen, setAutoOpen] = useState(true)
+  const autoOpenRef = useRef(true)
+  autoOpenRef.current = autoOpen
+
   // ── Browse mode: sidebar shows nearest post content while dragging ──
   const [browseMode, setBrowseMode] = useState(false)
   const [browsedPostId, setBrowsedPostId] = useState<string | null>(null)
   const browseModeRef = useRef(false)
   browseModeRef.current = browseMode
+
+  // ── Drag browsing: show nearest-to-center article in sidebar while dragging ──
+  const isDraggingRef = useRef(false)
 
   // ── Gaze mode: eye tracking controls browsed post (independent from drag-mode browse) ──
   const [gazeMode, setGazeMode] = useState<GazeMode>('off')
@@ -78,11 +94,18 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   const [gazeSteer, setGazeSteer] = useState<{ dx: number; dy: number } | null>(null)
   const [gazeHighlightId, setGazeHighlightId] = useState<string | null>(null)
 
+  // Gaze learner: passively learns correction from clicks
+  const gazeLearnerRef = useRef(new GazeLearner())
+
   // Face preview state
   const [showFacePreview, setShowFacePreview] = useState(true)
 
   // Mouse-on-card: pause gaze switching when mouse hovers over an article
   const mouseOverCardRef = useRef(false)
+
+  // Stable ref for headPose (used in callbacks without dependency)
+  const headPoseRef = useRef(headPose)
+  headPoseRef.current = headPose
 
   // Head-pose auto-browse: stable article display with minimum time + away-close
   const headBrowsedAtRef = useRef<number | null>(null)   // timestamp when current article was auto-browsed
@@ -104,10 +127,45 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   // Target sphere radius from distance setting (10→100, 20→150, 30→200)
   // Posts are normalized to unit sphere; Canvas3D animates the group scale for smooth zoom
   const sphereRadius = sceneSettings.distance * 5 + 50
+
+  // Time scroll: continuous offset that shifts which age range is in focus
+  // 0 = newest posts in front, higher = older posts brought forward
+  const [timeScroll, setTimeScroll] = useState(0)
+
+  const handleTimeScroll = useCallback((delta: number) => {
+    setTimeScroll(prev => {
+      let next = prev + delta
+      // Wrap around [0, 1) — endless rotation
+      next = next - Math.floor(next)
+      return next
+    })
+  }, [])
+
+  // Pinch zoom: adjust FOV to go "nearer" into the space
+  const [zoomFov, setZoomFov] = useState(78)
+  const handlePinchZoom = useCallback((delta: number) => {
+    setZoomFov(prev => Math.max(30, Math.min(110, prev + delta)))
+  }, [])
+
+  // Rank-based ageNorm: evenly space posts by timestamp order
+  // so every card gets a distinct slot in the rotation cycle
+  const ageNormByPost = useMemo(() => {
+    const sorted = [...posts]
+      .map((p, i) => ({ id: p.id, ts: p.created_at ? new Date(p.created_at).getTime() : 0, idx: i }))
+      .sort((a, b) => b.ts - a.ts) // newest first
+    const map = new Map<string, number>()
+    const n = sorted.length
+    sorted.forEach((s, rank) => {
+      map.set(s.id, n > 1 ? rank / n : 0) // evenly spaced 0...(n-1)/n
+    })
+    return map
+  }, [posts])
+
   const scaledPosts = useMemo(() => {
     // Normalize to unit sphere (radius 1) — actual radius is handled by group scale in Canvas3D
     // Clamp phi to [30°, 150°] to keep articles away from poles (navigation feels stuck there)
     const maxY = Math.cos(30 * Math.PI / 180) // ~0.866
+
     const normalized = posts.map(p => {
       const [x, y, z] = p.position
       const len = Math.sqrt(x * x + y * y + z * z) || 1
@@ -121,9 +179,22 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         nz = (nz / xzLen) * targetXZ
       }
 
+      // Rank-based ageNorm: evenly distributed so each card has its own slot
+      const ageNorm = ageNormByPost.get(p.id) ?? 0
+
+      // Fog: scroll shifts which time period is in focus
+      // Circular distance so wrapping is seamless
+      let depthOffset = ageNorm - timeScroll
+      if (depthOffset > 0.5) depthOffset -= 1
+      if (depthOffset < -0.5) depthOffset += 1
+      const fogDistance = Math.abs(depthOffset)
+      const ageFade = Math.max(0.6, 1.0 - fogDistance * 0.6)
+
       return {
         ...p,
         position: [nx, ny, nz] as [number, number, number],
+        ageFade,
+        ageNorm,
       }
     })
 
@@ -175,7 +246,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
 
     return normalized
-  }, [posts])
+  }, [posts, timeScroll])
 
   const postMap = useMemo(() => {
     const map = new Map<string, CosmosPost>()
@@ -196,8 +267,8 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   //   0°–45°  → fully visible (opacity 1)
   //   45°–65° → fade zone (opacity 1→0)
   //   65°+    → not rendered
-  const cosInner = Math.cos(45 * Math.PI / 180)  // ~0.707
-  const cosOuter = Math.cos(65 * Math.PI / 180)  // ~0.423
+  const cosInner = Math.cos(35 * Math.PI / 180)  // ~0.819
+  const cosOuter = Math.cos(55 * Math.PI / 180)  // ~0.574
   const fadeBand = cosInner - cosOuter
 
   const visiblePostsWithOpacity = useMemo(() => {
@@ -208,7 +279,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     const lookY = Math.cos(effectivePhi)
     const lookZ = Math.sin(effectivePhi) * Math.cos(theta)
 
-    const result: { post: CosmosPost; visibility: number }[] = []
+    const result: { post: CosmosPost & { ageFade?: number }; visibility: number }[] = []
     for (const p of scaledPosts) {
       if (p.id === selectedPostId || p.id === browsedPostId || p.id === gazeHighlightId) {
         result.push({ post: p, visibility: 1 })
@@ -217,15 +288,37 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
       const dot = (p.position[0] / len) * lookX + (p.position[1] / len) * lookY + (p.position[2] / len) * lookZ
       if (dot < cosOuter) continue // beyond 80° — don't render
-      // Quantize to 5 steps (0, 0.2, 0.4, 0.6, 0.8, 1.0) — CSS transitions smooth the rest
-      const raw = dot >= cosInner ? 1 : (dot - cosOuter) / fadeBand
-      const visibility = Math.round(raw * 5) / 5
+      const visibility = dot >= cosInner ? 1 : (dot - cosOuter) / fadeBand
       result.push({ post: p, visibility })
     }
     return result
   }, [scaledPosts, cameraRotation, selectedPostId, browsedPostId, gazeHighlightId, cosInner, cosOuter, fadeBand])
 
-  const visiblePosts = useMemo(() => visiblePostsWithOpacity.map(v => v.post), [visiblePostsWithOpacity])
+  // Sort: further from focal point renders first (behind), focal posts render last (on top)
+  const visiblePosts = useMemo(() => {
+    const sorted = [...visiblePostsWithOpacity]
+    sorted.sort((a, b) => {
+      const ageA = (a.post as { ageNorm?: number }).ageNorm ?? 0
+      const ageB = (b.post as { ageNorm?: number }).ageNorm ?? 0
+      // Circular distance from focal point
+      let dA = ageA - timeScroll; if (dA > 0.5) dA -= 1; if (dA < -0.5) dA += 1
+      let dB = ageB - timeScroll; if (dB > 0.5) dB -= 1; if (dB < -0.5) dB += 1
+      const distA = Math.abs(dA)
+      const distB = Math.abs(dB)
+      return distB - distA // furthest first
+    })
+    return sorted.map(v => v.post)
+  }, [visiblePostsWithOpacity, timeScroll])
+  const ageFadeMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const v of visiblePostsWithOpacity) map.set(v.post.id, (v.post as { ageFade?: number }).ageFade ?? 1)
+    return map
+  }, [visiblePostsWithOpacity])
+  const ageNormMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const v of visiblePostsWithOpacity) map.set(v.post.id, (v.post as { ageNorm?: number }).ageNorm ?? 0)
+    return map
+  }, [visiblePostsWithOpacity])
   const visibilityMap = useMemo(() => {
     const map = new Map<string, number>()
     for (const v of visiblePostsWithOpacity) map.set(v.post.id, v.visibility)
@@ -278,6 +371,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   scaledPostsRef.current = scaledPosts
 
   const handleDragWhileSelected = useCallback(() => {
+    isDraggingRef.current = true
     if (!selectedPostId) return
     previousSelectedId.current = selectedPostId
     pendingAutoSelectRef.current = true
@@ -286,7 +380,13 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   }, [selectedPostId])
 
   const handleOrbitEnd = useCallback((_cameraPos: [number, number, number], cameraDir: [number, number, number]) => {
+    isDraggingRef.current = false
+
     if (browseModeRef.current) return // browse mode handles nearest-post via camera change
+
+    // Clear the drag-browsed sidebar — the auto-select below will open the full card
+    setBrowsedPostId(null)
+
     if (!pendingAutoSelectRef.current) return
     pendingAutoSelectRef.current = false
     setPendingAutoSelect(false)
@@ -310,9 +410,9 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     }
 
     previousSelectedId.current = null
-    // Auto-open if nearest card is within 40° of view center
+    // Auto-open if nearest card is within 40° of view center (only if auto-open enabled)
     const threshold = Math.cos(30 * Math.PI / 180) // ~0.866
-    if (bestId && bestAlignment > threshold) setSelectedPostId(bestId)
+    if (autoOpenRef.current && bestId && bestAlignment > threshold) setSelectedPostId(bestId)
   }, [])
 
   const handleSelect = useCallback((postId: string) => {
@@ -320,7 +420,29 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       setBrowsedPostId(postId)
       return
     }
+
+    // Gaze learner: record click as ground truth for calibration
+    if (gazeModeRef.current === 'active') {
+      const post = scaledPostsRef.current.find(p => p.id === postId)
+      if (post) {
+        const len = Math.sqrt(post.position[0] ** 2 + post.position[1] ** 2 + post.position[2] ** 2) || 1
+        const cardTheta = Math.atan2(post.position[0] / len, post.position[2] / len)
+        const cardPhi = Math.acos(Math.max(-1, Math.min(1, post.position[1] / len)))
+        const maxOffset = 60 * Math.PI / 180 // must match Canvas3D maxOffset
+        gazeLearnerRef.current.recordClick(
+          headPoseRef.current.yaw,
+          headPoseRef.current.pitch,
+          cardTheta,
+          cardPhi,
+          cameraRotationRef.current.theta,
+          cameraRotationRef.current.phi,
+          maxOffset,
+        )
+      }
+    }
+
     setPendingAutoSelect(false)
+    setBrowsedPostId(null) // hide sidebar when selecting a card directly
     setSelectedPostId(postId)
   }, [])
 
@@ -331,6 +453,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
 
   // When user drags the canvas, keep article open during drag, close after drag ends
   const handleCanvasDragStart = useCallback(() => {
+    isDraggingRef.current = true
     if (browseModeRef.current) return // browse mode — no auto-select logic
     previousSelectedId.current = selectedPostId
     pendingAutoSelectRef.current = true
@@ -338,9 +461,10 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     // Don't close article yet — wait until drag ends (handleOrbitEnd)
   }, [selectedPostId])
 
-  // Click on empty canvas → close any open article
+  // Click on empty canvas → close any open article and sidebar
   const handleCanvasClick = useCallback(() => {
     setSelectedPostId(null)
+    if (!browseModeRef.current) setBrowsedPostId(null)
   }, [])
 
   // ── Vote handler ──
@@ -348,25 +472,33 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     setVotes((prev) => {
       const next = new Map(prev)
       const current = next.get(postId)
+      let delta: number
 
       if (current === dir) {
         next.delete(postId)
+        delta = dir === 'up' ? -1 : 1
         setPosts((ps) => ps.map((p) =>
-          p.id === postId
-            ? { ...p, upvotes: p.upvotes + (dir === 'up' ? -1 : 1) }
-            : p
+          p.id === postId ? { ...p, upvotes: p.upvotes + delta } : p
         ))
       } else {
-        let delta = dir === 'up' ? 1 : -1
+        delta = dir === 'up' ? 1 : -1
         if (current) delta += current === 'up' ? -1 : 1
         next.set(postId, dir)
         setPosts((ps) => ps.map((p) =>
           p.id === postId ? { ...p, upvotes: p.upvotes + delta } : p
         ))
       }
+
+      // Fire-and-forget: persist vote delta to MongoDB
+      fetch(`${API_BASE}/api/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId, direction: next.has(postId) ? dir : null, topic: layout.topic, delta }),
+      }).catch(() => { /* best-effort */ })
+
       return next
     })
-  }, [])
+  }, [layout.topic])
 
   // ── Reply handler ──
   const handleReply = useCallback((postId: string) => {
@@ -405,12 +537,20 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       relationships: [],
       position,
       isUserPost: true,
+      created_at: new Date().toISOString(),
     }
 
     setPosts((prev) => [...prev, newReply])
     setSelectedPostId(parentId)
     setComposing(null)
-  }, [postMap])
+
+    // Persist to DB (fire-and-forget)
+    fetch(`${API_BASE}/api/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post: newReply, topic: layout?.topic ?? 'SF Richmond' }),
+    }).catch(() => { /* best-effort */ })
+  }, [postMap, layout])
 
   // ── Compose overlay submit dispatcher ──
   const [submittingPost, setSubmittingPost] = useState(false)
@@ -421,10 +561,10 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       handleSubmitReply(content, author, composing.parentId)
       return
     }
-    // New post: classify and add to sphere with animation
+    // New post: classify to find the right position among related articles
     setSubmittingPost(true)
     try {
-      const res = await fetch('/api/classify', {
+      const res = await fetch(`${API_BASE}/api/classify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: content, layout }),
@@ -448,6 +588,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         core_claim: title || classified.core_claim,
         position,
         isUserPost: true,
+        created_at: new Date().toISOString(),
       }
 
       setPosts((prev) => [...prev, newPost])
@@ -458,6 +599,13 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
         setSelectedPostId(newPost.id)
       }
       setComposing(null)
+
+      // Persist to DB (fire-and-forget)
+      fetch(`${API_BASE}/api/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post: newPost, topic: layout?.topic ?? 'SF Richmond' }),
+      }).catch(() => { /* best-effort */ })
 
       // Highlight related posts
       const relatedIds = new Set(classified.closest_posts ?? [])
@@ -473,74 +621,22 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     } finally {
       setSubmittingPost(false)
     }
-  }, [composing, handleSubmitReply, layout])
+  }, [composing, handleSubmitReply, layout, browseMode])
 
-  // ── AI Generate Post (opens modal with pre-filled content) ──
-  const [generating, setGenerating] = useState(false)
   const [animatingPostId, setAnimatingPostId] = useState<string | null>(null)
   const [highlightedPostIds, setHighlightedPostIds] = useState<Set<string>>(new Set())
-
-  const handleGeneratePost = useCallback(async () => {
-    if (generating) return
-    setGenerating(true)
-    try {
-      const res = await fetch('/api/generate-post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ layout }),
-      })
-      if (!res.ok) throw new Error('Generation failed')
-      const generated = await res.json() as { title: string; content: string; author: string }
-
-      // Open compose modal pre-filled with AI content
-      setComposing({
-        type: 'post',
-        initialContent: generated.content,
-        initialAuthor: generated.author,
-        initialTitle: generated.title || '',
-      })
-    } catch (err) {
-      console.error('Generate post failed:', err)
-    } finally {
-      setGenerating(false)
-    }
-  }, [generating, layout])
-
-  // ── Mini-map navigation ──
-  const handleMiniMapNavigate = useCallback((theta: number, phi: number) => {
-    // We don't need to manually set camera rotation here, the camera's focus logic will handle it
-    // Create a dummy direction on the unit sphere
-    const dummyPos: [number, number, number] = [
-      Math.sin(phi) * Math.cos(theta),
-      Math.cos(phi),
-      Math.sin(phi) * Math.sin(theta),
-    ]
-    // Find nearest post to that direction (using scaled posts)
-    let nearestId: string | null = null
-    let minDist = Infinity
-    for (const p of scaledPosts) {
-      const dx = p.position[0] - dummyPos[0]
-      const dy = p.position[1] - dummyPos[1]
-      const dz = p.position[2] - dummyPos[2]
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-      if (dist < minDist) {
-        minDist = dist
-        nearestId = p.id
-      }
-    }
-    if (nearestId) setSelectedPostId(nearestId)
-  }, [scaledPosts])
 
   const handleCameraChange = useCallback((theta: number, phi: number) => {
     cameraRotationRef.current = { theta, phi }
     // Throttle state updates to ~10fps — camera itself is still smooth at 60fps via ref
     const now = Date.now()
-    if (now - lastCameraUpdateRef.current > 100) {
+    if (now - lastCameraUpdateRef.current > 25) {
       lastCameraUpdateRef.current = now
       startTransition(() => setCameraRotation({ theta, phi }))
 
-      // Browse mode: find nearest post to look direction (skip when gaze controls it)
-      if (browseModeRef.current && gazeModeRef.current !== 'active') {
+      // Find nearest post to look direction during browse mode OR while dragging (but not when a card is already selected)
+      const shouldFindNearest = (browseModeRef.current && gazeModeRef.current !== 'active') || (isDraggingRef.current && !pendingAutoSelectRef.current)
+      if (shouldFindNearest) {
         const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi))
         const lookX = Math.sin(effectivePhi) * Math.sin(theta)
         const lookY = Math.cos(effectivePhi)
@@ -600,15 +696,27 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   useEffect(() => {
     if (gazeMode !== 'active') return
 
-    // Use head pose as the steering signal
+    // Use head pose as the steering signal, with learned correction applied
     if (headPose.faceDetected) {
-      setGazeSteer({ dx: headPose.yaw, dy: headPose.pitch })
+      const corrected = gazeLearnerRef.current.correct(headPose.yaw, headPose.pitch)
+      setGazeSteer({ dx: corrected.yaw, dy: corrected.pitch })
+    }
+
+    // Reading protection: when a card is selected and head movement is small,
+    // the user is reading (eyes scanning down the text). Don't switch.
+    const READING_THRESHOLD = 0.35 // head must move beyond this to consider switching
+    if (selectedPostId && headBrowsedIdRef.current === selectedPostId) {
+      const headMagnitude = Math.sqrt(headPose.yaw ** 2 + headPose.pitch ** 2)
+      if (headMagnitude < READING_THRESHOLD) {
+        headAwayStartRef.current = null
+        return // small head movement while reading — ignore
+      }
     }
 
     // Auto-browse: find nearest post to where head is pointing
     // Lead the search ahead of camera by adding head-pose offset
     const { theta, phi } = cameraRotationRef.current
-    const GAZE_LEAD = 45 * Math.PI / 180 // head-pose offset angle
+    const GAZE_LEAD = 65 * Math.PI / 180 // head-pose offset angle (increased for desktop sensitivity)
     const gazeTheta = theta + headPose.yaw * GAZE_LEAD
     const gazePhi = phi - headPose.pitch * GAZE_LEAD
     const effectivePhi = Math.max(0.1, Math.min(Math.PI - 0.1, gazePhi))
@@ -616,13 +724,32 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     const lookY = Math.cos(effectivePhi)
     const lookZ = Math.sin(effectivePhi) * Math.cos(gazeTheta)
 
+    // Get the selected card's direction (to exclude occluded cards)
+    let selectedDir: [number, number, number] | null = null
+    if (selectedPostId) {
+      const sp = scaledPostsRef.current.find(p => p.id === selectedPostId)
+      if (sp) {
+        const sLen = Math.sqrt(sp.position[0] ** 2 + sp.position[1] ** 2 + sp.position[2] ** 2) || 1
+        selectedDir = [sp.position[0] / sLen, sp.position[1] / sLen, sp.position[2] / sLen]
+      }
+    }
+
     let bestId: string | null = null
     let bestDot = -Infinity
     const threshold = Math.cos(40 * Math.PI / 180)
+    const occlusionThreshold = Math.cos(15 * Math.PI / 180) // cards within 15° of selected are hidden behind it
 
     for (const p of scaledPostsRef.current) {
       const len = Math.sqrt(p.position[0] ** 2 + p.position[1] ** 2 + p.position[2] ** 2) || 1
-      const dot = (p.position[0] / len) * lookX + (p.position[1] / len) * lookY + (p.position[2] / len) * lookZ
+      const px = p.position[0] / len, py = p.position[1] / len, pz = p.position[2] / len
+
+      // Skip cards occluded by the currently open article
+      if (selectedDir && p.id !== selectedPostId) {
+        const occDot = px * selectedDir[0] + py * selectedDir[1] + pz * selectedDir[2]
+        if (occDot > occlusionThreshold) continue // too close to selected card — hidden behind it
+      }
+
+      const dot = px * lookX + py * lookY + pz * lookZ
       if (dot > bestDot) {
         bestDot = dot
         bestId = p.id
@@ -667,7 +794,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
     if (!currentId) {
       // No article currently shown — open immediately
       setGazeHighlightId(bestId)
-      setSelectedPostId(bestId)
+      if (autoOpenRef.current) setSelectedPostId(bestId)
       headBrowsedIdRef.current = bestId
       headBrowsedAtRef.current = now
       headAwayStartRef.current = null
@@ -678,7 +805,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       } else if (now - headAwayStartRef.current > AWAY_CLOSE_MS) {
         // Away → transition to new article
         setGazeHighlightId(bestId)
-        setSelectedPostId(bestId)
+        if (autoOpenRef.current) setSelectedPostId(bestId)
         headBrowsedIdRef.current = bestId
         headBrowsedAtRef.current = now
         headAwayStartRef.current = null
@@ -688,6 +815,22 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
       headAwayStartRef.current = null
     }
   }, [gazeMode, headPose.yaw, headPose.pitch, headPose.faceDetected])
+
+  // Prevent browser native pinch-zoom so only our FOV zoom works
+  useEffect(() => {
+    const preventZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) e.preventDefault()
+    }
+    const preventGesture = (e: Event) => e.preventDefault()
+    document.addEventListener('wheel', preventZoom, { passive: false })
+    document.addEventListener('gesturestart', preventGesture)
+    document.addEventListener('gesturechange', preventGesture)
+    return () => {
+      document.removeEventListener('wheel', preventZoom)
+      document.removeEventListener('gesturestart', preventGesture)
+      document.removeEventListener('gesturechange', preventGesture)
+    }
+  }, [])
 
   if (layout.posts.length === 0) {
     return (
@@ -701,17 +844,19 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>
       {/* Full-screen 3D canvas — always interactive for orbit/zoom */}
-      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} gazeSteer={gazeMode === 'active' && !selectedPostId ? gazeSteer : null} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick}>
+      <Canvas3D settings={sceneSettings} articleRadius={sphereRadius} focusTarget={focusTarget} pendingAutoSelect={pendingAutoSelect} gazeSteer={gazeMode === 'active' && !selectedPostId ? gazeSteer : null} onOrbitEnd={handleOrbitEnd} onCameraChange={handleCameraChange} onCanvasDragStart={handleCanvasDragStart} onCanvasClick={handleCanvasClick} onTimeScroll={handleTimeScroll} onPinchZoom={handlePinchZoom} fov={zoomFov}>
         {visiblePosts.map((post) => (
           <PostCard3D
             key={post.id}
             post={post}
             isSelected={!browseMode && selectedPostId === post.id}
-            isBrowsed={(browseMode && browsedPostId === post.id) || (gazeMode === 'active' && gazeHighlightId === post.id)}
+            isBrowsed={browsedPostId === post.id || (gazeMode === 'active' && gazeHighlightId === post.id)}
             visibility={visibilityMap.get(post.id) ?? 1}
             isAnimatingIn={animatingPostId === post.id}
             isHighlighted={highlightedPostIds.has(post.id)}
             dimmed={false}
+            ageFade={ageFadeMap.get(post.id) ?? 1}
+            zLayer={Math.abs((ageNormMap.get(post.id) ?? 0) - timeScroll) < 0.3 ? 0 : 1}
             articleScale={sceneSettings.articleScale}
             onSelect={handleSelect}
             onDeselect={handleDeselect}
@@ -736,19 +881,11 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
           <ControlPanel settings={sceneSettings} onChange={handleSettingsChange} />
         </div>
 
-        {/* Mini-map */}
-        <div style={{ pointerEvents: 'auto' }}>
-          <MiniMap
-            posts={posts}
-            cameraTheta={cameraRotation.theta}
-            cameraPhi={cameraRotation.phi}
-            onNavigate={handleMiniMapNavigate}
-          />
-        </div>
 
-        {/* Top-left gaze mode toggle (below control panel) */}
+        {/* Top-right mode toggles */}
         <div style={{
-          position: 'absolute', top: 100, left: 16,
+          position: 'absolute', top: 16, right: 16,
+          display: 'flex', gap: 6,
           pointerEvents: 'auto',
         }}>
           <button
@@ -772,26 +909,6 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             </svg>
             {gazeMode === 'active' ? 'Gaze On' : 'Gaze'}
           </button>
-          {/* Error toast */}
-          {camera.error && gazeMode === 'off' && (
-            <div style={{
-              marginTop: 8, padding: '8px 12px', borderRadius: 10,
-              backgroundColor: 'rgba(200, 80, 60, 0.15)',
-              border: '1px solid rgba(200, 80, 60, 0.3)',
-              fontSize: 11, color: '#E8836B',
-              fontFamily: 'system-ui, sans-serif',
-              maxWidth: 200, lineHeight: 1.4,
-            }}>
-              Camera not found. Check that a webcam is connected and permissions are allowed.
-            </div>
-          )}
-        </div>
-
-        {/* Top-right drag mode toggle */}
-        <div style={{
-          position: 'absolute', top: 16, right: 16,
-          pointerEvents: 'auto',
-        }}>
           <button
             onClick={() => {
               if (browseMode) {
@@ -818,9 +935,48 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            Drag Mode
+            Drag
+          </button>
+          <button
+            onClick={() => setAutoOpen(prev => !prev)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 16px', borderRadius: 12,
+              border: autoOpen ? '1px solid #B8A08F' : '1px solid #3A3530',
+              backgroundColor: autoOpen ? 'rgba(184, 160, 143, 0.15)' : 'rgba(38, 34, 32, 0.85)',
+              backdropFilter: 'blur(8px)',
+              color: autoOpen ? '#B8A08F' : '#9E9589', fontSize: 13, fontWeight: 500,
+              fontFamily: 'system-ui, sans-serif',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {autoOpen ? (
+                <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 12l2 2 4-4" /></>
+              ) : (
+                <><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" /></>
+              )}
+            </svg>
+            Auto-open
           </button>
         </div>
+        {/* Camera error toast */}
+        {camera.error && gazeMode === 'off' && (
+          <div style={{
+            position: 'absolute', top: 60, right: 16,
+            padding: '8px 12px', borderRadius: 10,
+            backgroundColor: 'rgba(200, 80, 60, 0.15)',
+            border: '1px solid rgba(200, 80, 60, 0.3)',
+            fontSize: 11, color: '#E8836B',
+            fontFamily: 'system-ui, sans-serif',
+            maxWidth: 200, lineHeight: 1.4,
+            pointerEvents: 'auto',
+          }}>
+            Camera not found. Check that a webcam is connected and permissions are allowed.
+          </div>
+        )}
 
         {/* Bottom-right actions */}
         <div style={{
@@ -850,60 +1006,59 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             List
           </Link>
           <button
-            onClick={handleGeneratePost}
-            disabled={generating}
+            onClick={() => setComposing({ type: 'post' })}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '12px 20px', borderRadius: 12,
               border: 'none',
-              backgroundColor: generating ? '#8A7D5A' : '#D4B872',
+              backgroundColor: '#D4B872',
               color: '#1C1A18',
               fontSize: 14,
               fontWeight: 600,
               fontFamily: 'system-ui, sans-serif',
-              cursor: generating ? 'wait' : 'pointer',
+              cursor: 'pointer',
               boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
               transition: 'background-color 0.2s',
             }}
           >
-            {generating ? (
-              <>
-                <div style={{
-                  width: 16, height: 16, border: '2px solid #1C1A18',
-                  borderTopColor: 'transparent', borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                }} />
-                Generating...
-              </>
-            ) : (
-              <>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                New Post
-              </>
-            )}
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Post
           </button>
         </div>
 
-        {/* Drag-mode browse sidebar */}
-        {browseMode && browsedPost && (
-          <div style={{ pointerEvents: 'auto' }}>
-            <DetailPanel
-              post={browsedPost}
-              relatedPosts={browsedRelatedPosts}
-              replies={browsedReplies}
-              onNavigate={(id) => setBrowsedPostId(id)}
-              onClose={() => {
-                setBrowseMode(false)
-                setBrowsedPostId(null)
+        {/* Browse sidebar — shown in browse mode OR while dragging */}
+        <AnimatePresence>
+          {browsedPost && (
+            <motion.div
+              key="detail-panel"
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+              style={{ pointerEvents: 'auto' }}
+              onPointerEnter={() => {
+                // End any active canvas drag so the user can read the sidebar
+                window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
               }}
-              onVote={handleVote}
-              userVote={votes.get(browsedPost.id) ?? null}
-              onReply={handleReply}
-            />
-          </div>
-        )}
+            >
+              <DetailPanel
+                post={browsedPost}
+                relatedPosts={browsedRelatedPosts}
+                replies={browsedReplies}
+                onNavigate={(id) => setBrowsedPostId(id)}
+                onClose={() => {
+                  setBrowseMode(false)
+                  setBrowsedPostId(null)
+                }}
+                onVote={handleVote}
+                userVote={votes.get(browsedPost.id) ?? null}
+                onReply={handleReply}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Compose overlay */}
         {composing && (
@@ -911,7 +1066,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
             <ComposeOverlay
               mode={
                 composing.type === 'post'
-                  ? { type: 'post', initialContent: composing.initialContent, initialAuthor: composing.initialAuthor, initialTitle: composing.initialTitle }
+                  ? { type: 'post' }
                   : { type: 'reply', parentAuthor: postMap.get(composing.parentId)?.author ?? 'Unknown' }
               }
               onSubmit={handleComposeSubmit}

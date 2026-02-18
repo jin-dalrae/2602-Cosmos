@@ -5,6 +5,9 @@ import useCosmosData from './hooks/useCosmosData'
 import CosmosExperience from './components/CosmosExperience'
 import ArticleListPage from './components/ListView/ArticleListPage'
 import LandingPage from './components/LandingPage'
+import AdminPage from './components/Admin/AdminPage'
+import TermsPage from './components/TermsPage'
+import PrivacyPage from './components/PrivacyPage'
 import LoadingCosmos from './components/UI/LoadingCosmos'
 
 type AppState = 'loading' | 'experience'
@@ -85,8 +88,8 @@ function CosmosApp() {
             transition={{ duration: 0.4 }}
           >
             <Routes>
-              <Route path="/" element={<CosmosExperience layout={layout} isRefining={isRefining} />} />
-              <Route path="/list" element={<ArticleListPage layout={layout} />} />
+              <Route path="/web" element={<CosmosExperience layout={layout} isRefining={isRefining} />} />
+              <Route path="/web/list" element={<ArticleListPage layout={layout} />} />
             </Routes>
           </motion.div>
         )}
@@ -98,11 +101,23 @@ function CosmosApp() {
 function AppRoutes() {
   const location = useLocation()
 
-  if (location.pathname === '/landing') {
-    return <LandingPage />
+  if (location.pathname.startsWith('/admin')) {
+    return <AdminPage />
   }
 
-  return <CosmosApp />
+  if (location.pathname === '/terms') {
+    return <TermsPage />
+  }
+
+  if (location.pathname === '/privacy') {
+    return <PrivacyPage />
+  }
+
+  if (location.pathname.startsWith('/web')) {
+    return <CosmosApp />
+  }
+
+  return <LandingPage />
 }
 
 export default function App() {

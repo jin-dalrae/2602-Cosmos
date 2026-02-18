@@ -9,7 +9,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "script-src 'self' 'unsafe-eval' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; font-src 'self' data:;"
+            "value": "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google-analytics.com https://www.googletagmanager.com; connect-src 'self' https://*.run.app https://*.firebaseio.com https://*.googleapis.com https://storage.googleapis.com https://cdn.jsdelivr.net wss://*.firebaseio.com https://www.google-analytics.com https://analytics.google.com https://firebaseinstallations.googleapis.com; font-src 'self' data:;"
           }
         ]
       }

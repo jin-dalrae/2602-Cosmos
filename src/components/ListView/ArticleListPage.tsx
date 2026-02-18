@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import type { CosmosLayout, CosmosPost } from '../../lib/types'
+import { API_BASE } from '../../lib/api'
 import ArticleList from './ArticleList'
 import ComposeOverlay from '../ComposeOverlay'
 
@@ -23,25 +24,33 @@ export default function ArticleListPage({ layout }: ArticleListPageProps) {
     setVotes((prev) => {
       const next = new Map(prev)
       const current = next.get(postId)
+      let delta: number
 
       if (current === dir) {
         next.delete(postId)
+        delta = dir === 'up' ? -1 : 1
         setPosts((ps) => ps.map((p) =>
-          p.id === postId
-            ? { ...p, upvotes: p.upvotes + (dir === 'up' ? -1 : 1) }
-            : p
+          p.id === postId ? { ...p, upvotes: p.upvotes + delta } : p
         ))
       } else {
-        let delta = dir === 'up' ? 1 : -1
+        delta = dir === 'up' ? 1 : -1
         if (current) delta += current === 'up' ? -1 : 1
         next.set(postId, dir)
         setPosts((ps) => ps.map((p) =>
           p.id === postId ? { ...p, upvotes: p.upvotes + delta } : p
         ))
       }
+
+      // Fire-and-forget: persist vote delta to MongoDB
+      fetch(`${API_BASE}/api/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId, direction: next.has(postId) ? dir : null, topic: layout.topic, delta }),
+      }).catch(() => { /* best-effort */ })
+
       return next
     })
-  }, [])
+  }, [layout.topic])
 
   const handleReply = useCallback((postId: string) => {
     setComposing({ parentId: postId })
@@ -77,11 +86,19 @@ export default function ArticleListPage({ layout }: ArticleListPageProps) {
         parentPos[2] + (Math.random() - 0.5) * 0.3,
       ],
       isUserPost: true,
+      created_at: new Date().toISOString(),
     }
 
     setPosts((prev) => [...prev, newReply])
     setComposing(null)
-  }, [composing, postMap])
+
+    // Persist to DB (fire-and-forget)
+    fetch(`${API_BASE}/api/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post: newReply, topic: layout.topic }),
+    }).catch(() => { /* best-effort */ })
+  }, [composing, postMap, layout.topic])
 
   return (
     <div className="relative w-full h-full" style={{ background: '#262220' }}>

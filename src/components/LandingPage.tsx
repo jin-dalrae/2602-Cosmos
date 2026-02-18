@@ -1,24 +1,23 @@
 import { useRef, useEffect, lazy, Suspense } from 'react'
 import { motion, useInView } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 const LandingSphere = lazy(() => import('./LandingSphere'))
 
-/* ── colors ── */
+/* ── colors — light-on-dark palette so sphere shows through ── */
 const C = {
-  bg: '#FDFBF8',
-  cardBg: 'rgba(245, 242, 239, 0.7)',
-  border: 'rgba(232, 226, 217, 0.6)',
-  text: '#2A2520',
-  textMuted: '#7A7068',
-  textFaint: '#A89F94',
-  gold: '#B8943F',
-  goldBg: '#B8943F14',
-  goldBorder: '#B8943F30',
-  sage: '#5A8A6A',
-  coral: '#C4634A',
-  lavender: '#7A6E9B',
-  olive: '#7A7A50',
+  text: '#F5F2EF',
+  textMuted: '#C8C1B8',
+  textFaint: '#9E9589',
+  cardBg: 'rgba(30, 26, 24, 0.6)',
+  border: 'rgba(245, 242, 239, 0.1)',
+  gold: '#D4B872',
+  goldBg: 'rgba(212, 184, 114, 0.12)',
+  goldBorder: 'rgba(212, 184, 114, 0.25)',
+  sage: '#8FB8A0',
+  coral: '#E8836B',
+  lavender: '#9B8FB8',
+  olive: '#A3A07E',
 }
 
 /* ── tiny helpers ── */
@@ -38,7 +37,7 @@ function Section({ children, delay = 0 }: { children: React.ReactNode; delay?: n
 }
 
 function Divider() {
-  return <div style={{ width: 48, height: 1, backgroundColor: 'rgba(232, 226, 217, 0.4)', margin: '0 auto' }} />
+  return <div style={{ width: 48, height: 1, backgroundColor: 'rgba(245, 242, 239, 0.15)', margin: '0 auto' }} />
 }
 
 /* ── main ── */
@@ -48,15 +47,27 @@ export default function LandingPage() {
   // Override the global overflow:hidden on html/body/#root so we can scroll
   useEffect(() => {
     const root = document.getElementById('root')
-    document.documentElement.style.overflow = 'auto'
-    document.body.style.overflow = 'auto'
-    document.body.style.background = C.bg
-    if (root) root.style.overflow = 'auto'
+    const html = document.documentElement
+    const body = document.body
+
+    html.style.overflow = 'auto'
+    html.style.height = 'auto'
+    body.style.overflow = 'auto'
+    body.style.height = 'auto'
+    if (root) {
+      root.style.overflow = 'auto'
+      root.style.height = 'auto'
+    }
+
     return () => {
-      document.documentElement.style.overflow = 'hidden'
-      document.body.style.overflow = 'hidden'
-      document.body.style.background = ''
-      if (root) root.style.overflow = 'hidden'
+      html.style.overflow = 'hidden'
+      html.style.height = '100%'
+      body.style.overflow = 'hidden'
+      body.style.height = '100%'
+      if (root) {
+        root.style.overflow = 'hidden'
+        root.style.height = '100%'
+      }
     }
   }, [])
 
@@ -66,6 +77,16 @@ export default function LandingPage() {
       color: C.text,
       overflowX: 'hidden',
     }}>
+      {/* 3D Sphere background — fixed so it stays while scrolling */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 0,
+        opacity: 0.85,
+      }}>
+        <Suspense fallback={null}>
+          <LandingSphere />
+        </Suspense>
+      </div>
+
       {/* scrollable content */}
       <div style={{ position: 'relative', zIndex: 1 }}>
 
@@ -78,17 +99,7 @@ export default function LandingPage() {
           padding: '80px 24px 60px',
           textAlign: 'center',
         }}>
-          {/* 3D Sphere background — fixed so it stays while scrolling */}
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 0,
-            opacity: 0.85,
-          }}>
-            <Suspense fallback={null}>
-              <LandingSphere />
-            </Suspense>
-          </div>
-
-          {/* Text overlay with subtle backdrop */}
+          {/* Text overlay */}
           <div style={{
             position: 'relative', zIndex: 1,
             display: 'flex', flexDirection: 'column',
@@ -144,7 +155,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.8 }}
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/web')}
               style={{
                 fontFamily: 'system-ui, sans-serif',
                 fontSize: 15, fontWeight: 500,
@@ -177,13 +188,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* ━━━ Content with frosted glass so sphere shows through ━━━ */}
+        {/* ━━━ Content — no opaque bg, sphere visible behind ━━━ */}
         <div style={{
           position: 'relative',
-          backgroundColor: 'rgba(253, 251, 248, 0.82)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderRadius: '32px 32px 0 0',
           marginTop: -32,
           paddingTop: 32,
         }}>
@@ -230,6 +237,8 @@ export default function LandingPage() {
                   <div key={item.label} style={{
                     padding: '20px 24px', borderRadius: 12,
                     backgroundColor: C.cardBg,
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                     border: `1px solid ${C.border}`,
                   }}>
                     <div style={{
@@ -319,7 +328,7 @@ export default function LandingPage() {
                     <div style={{
                       width: 3, borderRadius: 2, flexShrink: 0,
                       backgroundColor: pillar.accent,
-                      opacity: 0.3,
+                      opacity: 0.4,
                     }} />
                     <div>
                       <h3 style={{
@@ -428,6 +437,8 @@ export default function LandingPage() {
                   padding: '28px 32px',
                   borderRadius: 16,
                   backgroundColor: C.cardBg,
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
                   border: `1px solid ${C.border}`,
                 }}>
                   <p style={{
@@ -499,6 +510,8 @@ export default function LandingPage() {
                     display: 'flex', alignItems: 'flex-start', gap: 16,
                     padding: '16px 20px', borderRadius: 12,
                     backgroundColor: C.cardBg,
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                     border: `1px solid ${C.border}`,
                   }}>
                     <span style={{
@@ -544,6 +557,8 @@ export default function LandingPage() {
                   <div key={t.label} style={{
                     padding: '14px 16px', borderRadius: 10,
                     backgroundColor: C.cardBg,
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                     border: `1px solid ${C.border}`,
                     textAlign: 'center',
                   }}>
@@ -619,12 +634,12 @@ export default function LandingPage() {
           <div style={{
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            padding: '80px 24px 120px',
+            padding: '80px 24px 60px',
             textAlign: 'center',
           }}>
             <Section>
               <motion.button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/web')}
                 style={{
                   fontFamily: 'system-ui, sans-serif',
                   fontSize: 16, fontWeight: 500,
@@ -638,29 +653,106 @@ export default function LandingPage() {
                   letterSpacing: 0.5,
                   marginBottom: 32,
                 }}
-                whileHover={{ backgroundColor: '#B8943F22', scale: 1.02 }}
+                whileHover={{ backgroundColor: 'rgba(212, 184, 114, 0.22)', scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
                 Enter COSMOS
               </motion.button>
-              <p style={{
-                fontFamily: 'system-ui, sans-serif',
-                fontSize: 12, color: C.textFaint,
-                margin: 0,
-              }}>
-                Built at the Anthropic Claude Hackathon  &middot;  February 2026
-              </p>
-              <p style={{
-                fontFamily: 'system-ui, sans-serif',
-                fontSize: 12, color: `${C.textFaint}88`,
-                margin: '6px 0 0',
-              }}>
-                By Rae
-              </p>
             </Section>
           </div>
 
-        </div>{/* end content bg wrapper */}
+          {/* ━━━ FOOTER ━━━ */}
+          <footer style={{
+            padding: '40px 24px 48px',
+            borderTop: '1px solid rgba(245, 242, 239, 0.08)',
+          }}>
+            <div style={{
+              maxWidth: 640, margin: '0 auto',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 20,
+              textAlign: 'center',
+            }}>
+              {/* Links */}
+              <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                <a
+                  href="https://x.com/DalraeJin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 13, color: C.textFaint,
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+                  onMouseLeave={e => (e.currentTarget.style.color = C.textFaint)}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'inline', verticalAlign: -2, marginRight: 5 }}>
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  @DalraeJin
+                </a>
+                <span style={{ color: 'rgba(245, 242, 239, 0.15)' }}>&middot;</span>
+                <a
+                  href="https://raejin.web.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 13, color: C.textFaint,
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+                  onMouseLeave={e => (e.currentTarget.style.color = C.textFaint)}
+                >
+                  Rae Jin
+                </a>
+              </div>
+
+              {/* Legal links */}
+              <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+                <Link
+                  to="/terms"
+                  style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 12, color: `${C.textFaint}99`,
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = C.textFaint)}
+                  onMouseLeave={e => (e.currentTarget.style.color = `${C.textFaint}99`)}
+                >
+                  Terms of Service
+                </Link>
+                <span style={{ color: 'rgba(245, 242, 239, 0.1)' }}>&middot;</span>
+                <Link
+                  to="/privacy"
+                  style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    fontSize: 12, color: `${C.textFaint}99`,
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = C.textFaint)}
+                  onMouseLeave={e => (e.currentTarget.style.color = `${C.textFaint}99`)}
+                >
+                  Privacy Policy
+                </Link>
+              </div>
+
+              {/* Copyright */}
+              <p style={{
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 11, color: `${C.textFaint}66`,
+                margin: 0,
+              }}>
+                &copy; {new Date().getFullYear()} Rae Jin. All rights reserved.
+              </p>
+            </div>
+          </footer>
+
+        </div>{/* end content wrapper */}
       </div>
     </div>
   )

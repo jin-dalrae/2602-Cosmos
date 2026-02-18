@@ -35,7 +35,7 @@ export default function ControlPanel({ settings, onChange }: ControlPanelProps) 
         <span style={{
           fontSize: 11, color: '#9E9589', fontFamily: 'system-ui',
           whiteSpace: 'nowrap', minWidth: 60,
-        }}>Distance</span>
+        }}>Card size</span>
         <input
           type="range"
           min={10} max={30} step={1}

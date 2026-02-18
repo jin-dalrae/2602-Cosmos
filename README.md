@@ -1,98 +1,62 @@
 # COSMOS
 
-### A Planetarium for Discourse
+### Spatial Intelligence for Human Discourse
 
-> *Feeds are linear. Conversations are not. What if you could stand inside a discussion and just look around?*
-![COSMOS Demo](demo.gif)
----
+> *1.7 billion people read online discussions daily. Every platform shows them as a flat list. We built the first interface where you stand inside the conversation and navigate it with your body.*
 
-## The Problem with Feeds
-
-Every major platform — Reddit, Twitter, Hacker News — reduces conversation to a single stream. One post after another. Scroll down. Scroll more. An algorithm decides what's next.
-
-This linearity does two things to readers:
-
-1. **It makes you passive.** You don't explore — you receive. The feed moves, you absorb. There's no agency in scrolling.
-2. **It hides the landscape.** A 500-comment thread has structure — clusters of agreement, pockets of dissent, bridges between worldviews, gaps where no one has spoken. Feeds flatten all of this into a wall of text sorted by karma.
-
-The result: you finish reading a thread and have no idea what the conversation actually looked like. You saw a slice. The feed chose which slice.
+**Live:** [cosmosweb.web.app](https://cosmosweb.web.app) | **By:** [Rae Jin](https://raejin.web.app) | **X:** [@DalraeJin](https://x.com/DalraeJin)
 
 ---
 
-## What COSMOS Does Differently
+## The Problem
 
-COSMOS places you **inside** a sphere of content. Every post is a card on the sphere's inner surface. You stand at the center and look outward.
+Every major platform — Reddit, X, HackerNews, Discord — reduces conversation to **one post after another**. The topology of debate — who agrees, who disagrees, what assumptions differ, where clusters form — is completely invisible.
 
-You don't scroll. You don't click. You **drag to look around**, and whatever your gaze lands on appears in a sidebar panel. Content arrives as you move — a continuous stream shaped by your curiosity, not an algorithm.
+| What feeds do | What happens |
+|---------------|-------------|
+| Flatten everything into one stream | Readers have zero agency — the algorithm chooses the sequence |
+| Hide the landscape | 500-comment threads have structure: clusters, bridges, gaps. Feeds erase all of it |
+| Reward extremes | Polarization accelerates because sorted lists surface the loudest voice, not the most nuanced |
+| Exhaust readers | Decision fatigue from clicking "is this worth my attention?" on every post |
 
-This changes three things:
-
-**There is no "next."** A feed has a single direction: down. A sphere has every direction. Two readers starting from the same point will browse completely different paths based on which way they drift. Your curiosity determines the sequence.
-
-**Topics become places.** Community posts about neighborhood gardening occupy one region of the sphere. AI and startup discussions live on another. You can feel the conceptual distance between them. Drag slowly from one zone toward another and you'll pass through bridge posts — ideas that connect both worlds. The topology of the conversation becomes something you navigate, not something described to you.
-
-**Friction disappears.** Every click is a micro-decision: "Is this worth my attention?" Browse mode removes that question entirely. You look, and content is there. The 30-degree detection cone is generous on purpose — this isn't precision targeting, it's peripheral awareness. You don't select articles. You wander through them.
-
----
-
-## The Design Philosophy
-
-### Why a sphere? Why inside it?
-
-A sphere has no edges, no top, no bottom. There's no privileged position. Content doesn't have a rank or an order — it has a *location*. Being inside it makes the content feel like an environment rather than a list. You're surrounded by voices, like standing in a room full of conversations that you can tune into by turning your head.
-
-### Why no clicks in browse mode?
-
-Clicking interrupts flow. It forces a binary decision at every moment: engage or keep scrolling. That decision fatigue is what makes feeds exhausting. By removing the click — by making gaze the only interaction — the reader stays in a state of continuous awareness. You're not making choices about individual posts. You're drifting through an information space, and things catch your attention naturally.
-
-### Why multiple topic regions?
-
-COSMOS currently renders SF Richmond neighborhood discussions alongside AI and startup content on the same sphere. This isn't a category system. It's a bet on **accidental drift** — the idea that the most valuable discovery happens when you didn't plan to find something. You came to read about community gardening, but your gaze drifted 90 degrees and landed on a post about how AI is changing local businesses. That moment of unplanned connection is what feeds can never produce, because feeds only show you what they think you want.
-
-### What changes about the reader?
-
-The goal isn't productivity or entertainment. It's **awareness**. A feed reader finishes a thread knowing what was popular. A COSMOS reader finishes a session knowing the shape of the conversation — where the clusters are, where the gaps are, how ideas relate across the full landscape. They saw the whole room, not just the loudest voice in it.
+The result: you finish a thread and have no idea what the conversation actually looked like. You saw a slice. The feed chose which slice.
 
 ---
 
-## How It Works
+## The Solution
 
-### The Browsing Experience
+**COSMOS transforms any discourse landscape into a 3D spatial experience navigated with your body.**
 
-- **Drag** to look around the sphere — content cards float on the inner surface
-- **Browse mode** — the nearest article auto-opens in a sidebar panel as you drag. No clicking needed.
-- **Compact cards** stay compact on the sphere — they're landmarks, not content. The sidebar is where you read.
-- **Smooth cross-fade** between articles as your gaze drifts — content transitions feel continuous, not discrete
-- **Emotion-coded colors** — 9 palettes (passionate, analytical, frustrated, hopeful, fearful, sarcastic, neutral, aggressive, empathetic) give you a feel for the conversation's mood at a glance
+You stand inside a planetarium sphere. Arguments float around you as cards — clustered by perspective, colored by emotion, connected by constellation lines. Multiple topics self-organize into different regions of the sky. AI understands the topology. Your head controls the view.
 
-### AI-Powered Spatial Layout
+### What changes
 
-Every post is analyzed by Claude for stance, emotion, hidden assumptions, and logical relationships — then positioned on the sphere where location carries meaning:
+**There is no "next."** A sphere has every direction. Two readers starting from the same point browse completely different paths. Your curiosity determines the sequence.
 
-| Dimension | What It Encodes |
-|-----------|----------------|
-| **Longitude** | Opinion spectrum — opposing views sit across the sphere |
-| **Latitude** | Abstraction — personal stories near the equator, systemic analysis toward the poles |
-| **Clustering** | Worldview — posts that share assumptions naturally group together |
+**Topics become places.** Neighborhood gardening on one side, AI startups on another. Drag slowly between them and you pass through bridge posts — ideas connecting both worlds. The topology of conversation becomes something you navigate.
 
-Gaps on the sphere surface reveal missing perspectives. Bridge posts sit between clusters, connecting opposing camps.
+**The interface reads you back.** GazeLearner passively learns from your natural clicks — no calibration step, no setup. The more you browse, the better it understands where you're looking. The system adapts to you, not the other way around.
 
-### Five-Agent Pipeline
+---
+
+## Core Technology
+
+### Five-Agent AI Pipeline
 
 ```
-   Topic or Reddit URL
-          |
-   [GENERATOR]      Synthesizes 150+ realistic community voices
-          |          across 10 subtopics with diverse stances
-   [CARTOGRAPHER]   Enriches every post: stance, emotion,
-          |          assumptions, logical chain, relationships
-   [ARCHITECT]      Computes spatial positions — clusters,
-          |          bridges, gaps — on the sphere surface
-   [CLASSIFIER]     Classifies new user posts in real-time
-   [NARRATOR]       Answers questions about the discussion
+Topic Input
+    |
+[GENERATOR]     150+ realistic voices across 10+ subtopics
+    |            Diverse stances, emotions, post types
+[CARTOGRAPHER]  Enriches every post: stance, emotion,
+    |            assumptions, logical chain, relationships
+[ARCHITECT]     Computes 3D positions — clusters,
+    |            bridges, gaps — on the sphere surface
+[CLASSIFIER]    Places new user posts in real-time
+[NARRATOR]      Answers questions about the discussion
 ```
 
-The constellation builds incrementally — cards appear as they're analyzed, not after the full pipeline completes.
+This is not visualization. This is **spatial intelligence** — the AI doesn't just show data, it understands the shape of the conversation.
 
 ### What the AI Extracts Per Post
 
@@ -104,7 +68,77 @@ assumptions:     ["Free market produces optimal housing"]
 logical_chain:   { builds_on: ["post_42"], root: "Markets self-correct" }
 perceived_by:    { renters: "dismissive", developers: "economically sound" }
 relationships:   [{ target: "post_17", type: "disagrees", strength: 0.9 }]
+embedding_hint:  [0.3, 0.7, -0.2]  →  position on the sphere
 ```
+
+### Spatial Encoding
+
+| Sphere Axis | What It Encodes |
+|-------------|----------------|
+| **Longitude (theta)** | Opinion spectrum — opposing views sit across the sphere |
+| **Latitude (phi)** | Abstraction — personal stories near equator, systemic analysis toward poles |
+| **Clustering** | Worldview — posts sharing assumptions naturally group together |
+| **Gaps** | Missing perspectives — visible empty regions on the sphere surface |
+| **Constellation edges** | Relationships between arguments (agrees, disagrees, extends, challenges) |
+
+---
+
+## Input Paradigm
+
+COSMOS introduces a multi-modal input system that goes beyond point-and-click:
+
+| Input | What It Does |
+|-------|-------------|
+| **Drag** | Rotate the sphere — quaternion-based, 3px threshold, 40fps camera updates |
+| **Head pose** | Hands-free navigation — MediaPipe at 60fps, position-based steering (not velocity) |
+| **Two-finger scroll** | Rotate through time ordering — rank-based, endless wrapping, fog effect |
+| **Pinch zoom** | Adjust FOV (30°–110°) — go nearer into the space |
+| **Click** | Open an article (optional — auto-open handles this in gaze/drag mode) |
+
+### GazeLearner: Self-Calibrating Gaze
+
+Traditional gaze systems require explicit calibration ("look at these 9 dots"). COSMOS uses **passive calibration from natural clicks**:
+
+1. User browses with head-pose steering
+2. Every click records head pose + card direction as ground truth
+3. After 5 samples, weighted linear regression starts correcting raw head input
+4. Full confidence at 20 samples — exponential time decay (60s half-life) prioritizes recent behavior
+5. System continuously adapts to posture changes via rolling recalibration (alpha=0.005)
+
+The result: gaze navigation gets more accurate the longer you use it, with zero setup.
+
+### Reading Protection
+
+Small head movements while reading (eye scanning a text) don't trigger article switching. Cards hidden behind the currently open article are excluded from gaze targeting. The system distinguishes between "reading" and "looking away."
+
+---
+
+## Temporal Depth
+
+Posts age. Older discussions don't disappear — they recede, like distant stars.
+
+- **Rank-based ordering:** Every post gets an evenly-spaced slot in the rotation cycle (no timestamp clustering)
+- **Fog effect:** Cards near the focal time are bright; others dim to 60% via CSS `brightness()` — subtle shade, always readable
+- **Endless rotation:** Two-finger scroll wraps around seamlessly — no start or end, continuous cycling through all posts
+- **Circular distance:** Z-ordering and brightness use circular distance so wrapping is seamless
+
+Cards don't move when you scroll. Their positions stay fixed on the sphere. Only visual prominence and stacking order change.
+
+---
+
+## Visual Design
+
+A planetarium at dusk — warm, dark, atmospheric. Not a cold tech demo.
+
+| Element | Design |
+|---------|--------|
+| **Skybox** | Rainbow hue (by longitude) + north pole white + south pole deep navy |
+| **Cards** | Paper-like, Georgia serif, 9-emotion color accents |
+| **Fog** | Brightness-based depth (not opacity — never transparent) |
+| **Dust** | 150 ambient particles for atmosphere |
+| **Edges** | 5 relationship types: agrees, disagrees, extends, builds-on, challenges |
+
+**Design principle:** Shading, not transparency. Cards dim via brightness filter, never go ghost-like. The fog metaphor is "peering through atmosphere to see distant stars."
 
 ---
 
@@ -113,43 +147,102 @@ relationships:   [{ target: "post_17", type: "disagrees", strength: 0.9 }]
 ```
 cosmos/
 ├── src/
-│   ├── App.tsx                          # Entry: landing → loading → experience
-│   ├── components/
-│   │   ├── CosmosExperience.tsx         # Master orchestrator — state, browse mode, selection
-│   │   ├── DetailPanel.tsx              # Sidebar panel for browse mode reading
-│   │   ├── ComposeOverlay.tsx           # New post / reply modal
-│   │   ├── ControlPanel.tsx             # Scene settings
-│   │   ├── MapMode/
-│   │   │   ├── Canvas3D.tsx             # Three.js canvas, quaternion camera rotation
-│   │   │   ├── PostCard3D.tsx           # Compact 3D cards with emotion colors
-│   │   │   ├── EdgeNetwork.tsx          # Relationship edge visualization
-│   │   │   └── AmbientDust.tsx          # Atmospheric particle field
-│   │   ├── ListView/                    # Traditional scrollable article list
-│   │   └── shared/EmotionPalette.ts     # Color system (9 emotions, 5 edge types)
+│   ├── main.tsx                           # Entry + Firebase Analytics init
+│   ├── App.tsx                            # Routes: landing, web, admin, terms, privacy
+│   ├── lib/
+│   │   ├── firebase.ts                    # Firebase SDK + Analytics
+│   │   ├── gazeLearner.ts                 # Passive gaze calibration (WLS regression)
+│   │   ├── orchestrator.ts                # Pipeline coordination + SSE
+│   │   ├── agents/                        # 5 Claude-powered specialist agents
+│   │   ├── api.ts                         # API client
+│   │   └── types.ts                       # Domain model (CosmosPost, CosmosLayout)
 │   ├── hooks/
-│   │   └── useCosmosData.ts             # SSE client for pipeline streaming
-│   └── lib/
-│       ├── agents/                      # 5 Claude-powered specialist agents
-│       ├── orchestrator.ts              # Pipeline coordination + SSE
-│       └── types.ts                     # Domain model
+│   │   ├── useCosmosData.ts               # SSE client for pipeline streaming
+│   │   └── useHeadPose.ts                 # MediaPipe FaceLandmarker + calibration
+│   ├── components/
+│   │   ├── CosmosExperience.tsx           # Master orchestrator — all state + logic
+│   │   ├── LandingPage.tsx                # Marketing page with 3D sphere background
+│   │   ├── ControlPanel.tsx               # Card size, article zoom sliders
+│   │   ├── MapMode/
+│   │   │   ├── Canvas3D.tsx               # Three.js canvas, quaternion camera, FOV zoom
+│   │   │   ├── PostCard3D.tsx             # 3D cards with emotion colors + transitions
+│   │   │   ├── EdgeNetwork.tsx            # Relationship constellation lines
+│   │   │   └── AmbientDust.tsx            # Atmospheric particle field
+│   │   ├── ListView/                      # Traditional scrollable article list
+│   │   ├── Admin/                         # Admin dashboard (PIN-protected)
+│   │   ├── UI/                            # Camera consent, face preview, loading
+│   │   ├── TermsPage.tsx                  # Terms of Service
+│   │   └── PrivacyPage.tsx                # Privacy Policy (CCPA)
+│   └── index.css
 ├── server/
-│   ├── index.ts                         # Express server
-│   └── routes/                          # API endpoints (process, classify, narrate)
-└── package.json
+│   ├── index.ts                           # Express 5 + static serving + SPA fallback
+│   ├── lib/                               # Server-side AI pipeline
+│   └── routes/                            # API: process, classify, narrate, admin
+├── prd/                                   # Product requirements (11 feature docs)
+├── firebase.json                          # Hosting config + CSP headers
+├── Dockerfile                             # Cloud Run container
+└── COSMOS_BUSINESS_PLAN.md                # Seed-stage business plan
 ```
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19, TypeScript 5.9, Vite 7 |
-| **3D Engine** | Three.js, @react-three/fiber, @react-three/drei |
-| **Animation** | Framer Motion, @use-gesture/react |
-| **Styling** | Tailwind CSS 4 |
-| **AI** | Claude API (Anthropic SDK) — Haiku for speed, Opus for quality |
-| **Backend** | Express 5, SSE streaming |
-| **Hosting** | Firebase Hosting |
-| **Cache** | Local file + Firestore |
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| **3D Engine** | Three.js + @react-three/fiber | Declarative 3D in React, GPU-accelerated |
+| **Frontend** | React 19, TypeScript 5.9, Vite 7 | Type-safe, fast builds, modern toolchain |
+| **Animation** | Framer Motion 12 | Smooth page/card transitions |
+| **Head Tracking** | MediaPipe FaceLandmarker | 60fps on-device, zero privacy cost |
+| **AI** | Claude API (Anthropic SDK) | Semantic analysis at the quality spatial layout requires |
+| **Backend** | Express 5, SSE streaming | Progressive loading — cards appear as analyzed |
+| **Database** | MongoDB | User posts, votes, layouts |
+| **Hosting** | Firebase Hosting + Cloud Run | CDN frontend + containerized API |
+| **Analytics** | Firebase Analytics | Page views, sessions, engagement |
+
+---
+
+## Market Opportunity
+
+| Segment | Size | COSMOS Fit |
+|---------|------|-----------|
+| **Online discussion platforms** | $15B | Spatial discussion is a new category above flat threads |
+| **AR/VR content** | $12B by 2028 | Headsets need spatial-native apps, not ported 2D panels |
+| **Enterprise collaboration** | $47B | Team decisions = discussions that need spatial mapping |
+| **Digital signage** | $27B by 2028 | Ambient mode: living discourse displays for offices, newsrooms |
+| **Education** | $8B | Teach critical thinking through spatial argument exploration |
+
+**Why now:** LLMs enable the semantic analysis quality needed. MediaPipe runs head tracking in the browser at zero latency. 30M+ AR/VR headsets by 2026. Discussion fatigue is at peak.
+
+---
+
+## Competitive Landscape
+
+**No direct competitor** combines AI-powered discussion understanding + 3D spatial visualization + body-based input + self-calibrating gaze.
+
+| Adjacent Player | Gap |
+|----------------|-----|
+| **Kialo** (structured debate) | Manual structure, 2D, no AI, no body input |
+| **Pol.is** (opinion clustering) | Statistical only, 2D scatter plot, no spatial navigation |
+| **Spatial.io** (VR meetings) | Meeting tool, not discussion understanding |
+| **Reddit / X / HN** | Flat lists, no spatial intelligence |
+
+### Defensible Moat
+
+1. **AI pipeline depth** — 5 specialized agents, not a single API call
+2. **GazeLearner** — self-calibrating from natural clicks (unique interaction model)
+3. **Cross-platform spatial engine** — same architecture: desktop → VR → AR glasses → ambient displays
+4. **Data network effect** — more discussions mapped → better positioning → better experience
+
+---
+
+## Roadmap
+
+| Phase | Timeline | What Ships |
+|-------|----------|-----------|
+| **Web App** | **Now (live)** | Full 3D sphere, 5 AI agents, head-pose, GazeLearner, temporal depth, pinch zoom |
+| **Ambient Mode** | Month 3–6 | Auto-rotating display mode for offices, newsrooms, conferences |
+| **VR/AR Native** | Month 6–12 | Quest + Vision Pro — hand tracking, eye tracking, spatial audio |
+| **Enterprise** | Month 12–24 | Team spheres, attention heatmaps, Slack/Teams integration, Analyst API |
+| **Platform** | Month 24+ | Embeddable `<cosmos-sphere>` widget, attention analytics, cross-sphere navigation |
 
 ---
 
@@ -157,24 +250,24 @@ cosmos/
 
 ```bash
 npm install
-cp .env.example .env   # add your ANTHROPIC_API_KEY
+cp .env.example .env   # add ANTHROPIC_API_KEY and MONGODB_URI
 npm run dev             # starts client (5173) and server (3001)
 ```
 
-Open `http://localhost:5173` — the pipeline runs automatically on the demo topic (SF Richmond + AI/Startup).
+Open `http://localhost:5173` — the pipeline runs automatically.
 
 ---
 
-## Where This Goes
+## Legal
 
-The sphere works for any body of discourse. Research papers cluster by methodology. News articles arrange by ideology. Public comments on a city proposal reveal the actual fault lines of disagreement. Classroom discussions show students the structure of their own reasoning.
-
-But the core idea stays the same: **stop reading feeds. Start standing inside conversations.**
+- [Terms of Service](https://cosmosweb.web.app/terms)
+- [Privacy Policy](https://cosmosweb.web.app/privacy) (CCPA compliant)
+- All camera processing is 100% client-side. No video data leaves the browser.
 
 ---
 
-Built at the **Anthropic Claude Hackathon** — February 2026.
+**Live:** [cosmosweb.web.app](https://cosmosweb.web.app)
 
-By **Rae**.
+Built with Claude Opus 4.6 — February 2026.
 
-MIT License
+(c) 2026 Rae Jin. All rights reserved.

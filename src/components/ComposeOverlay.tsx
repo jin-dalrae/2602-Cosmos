@@ -2,22 +2,16 @@ import { useState, useCallback } from 'react'
 import { UI_COLORS } from './shared/EmotionPalette'
 
 interface ComposeOverlayProps {
-  mode: { type: 'post'; initialContent?: string; initialAuthor?: string; initialTitle?: string } | { type: 'reply'; parentAuthor: string }
+  mode: { type: 'post' } | { type: 'reply'; parentAuthor: string }
   onSubmit: (content: string, author: string, title?: string) => void
   onCancel: () => void
   submitting?: boolean
 }
 
 export default function ComposeOverlay({ mode, onSubmit, onCancel, submitting = false }: ComposeOverlayProps) {
-  const [author, setAuthor] = useState(
-    mode.type === 'post' && mode.initialAuthor ? mode.initialAuthor : 'Anonymous'
-  )
-  const [postTitle, setPostTitle] = useState(
-    mode.type === 'post' && mode.initialTitle ? mode.initialTitle : ''
-  )
-  const [content, setContent] = useState(
-    mode.type === 'post' && mode.initialContent ? mode.initialContent : ''
-  )
+  const [author, setAuthor] = useState('Anonymous')
+  const [postTitle, setPostTitle] = useState('')
+  const [content, setContent] = useState('')
 
   const handleSubmit = useCallback(() => {
     const trimmed = content.trim()

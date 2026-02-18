@@ -1,4 +1,4 @@
-// ═══ Raw Reddit Data ═══
+// ═══ Raw Post Data ═══
 
 export interface RawPost {
   id: string
@@ -87,6 +87,7 @@ export interface EnrichedPost {
 export interface CosmosPost extends EnrichedPost {
   position: [number, number, number]
   isUserPost?: boolean
+  created_at?: string // ISO 8601 timestamp
 }
 
 export interface Cluster {
@@ -191,6 +192,12 @@ export interface GazeState {
   confidence: number      // 0-1
 }
 
+export interface GazeTelemetry {
+  gazeState: GazeState | null
+  recentZones: GazeZone[]
+  dwellHistory: { zone: GazeZone; ms: number }[]
+}
+
 export interface FaceState {
   headNod: number         // -1 (shake) to 1 (nod)
   headShake: number       // -1 to 1
@@ -255,25 +262,6 @@ export interface BehaviorPattern {
   correlation: number     // 0-1
 }
 
-export interface UserBehaviorModel {
-  patterns: BehaviorPattern[]
-  totalActions: number
-  phase: 'observe' | 'model' | 'predict' | 'refine'
-  predictionAccuracy: number
-}
-
-// ═══ Gaze Telemetry (sent to Narrator) ═══
-
-export interface GazeTelemetry {
-  readingDepth: number
-  engagementPeaks: { postId: string; score: number }[]
-  confusionEvents: number
-  attentionByCluster: Record<string, number>
-  gazeMouseDivergences: number
-  fatigueLevel: number
-  modelInsights: string[]
-}
-
 // ═══ SSE Progress Events ═══
 
 export interface ProgressEvent {
@@ -282,10 +270,3 @@ export interface ProgressEvent {
   detail?: string
 }
 
-// ═══ READ/MAP Blend ═══
-
-export interface BlendState {
-  value: number           // 0 = READ, 1 = MAP
-  isTransitioning: boolean
-  source: 'pinch' | 'gaze' | 'button'
-}

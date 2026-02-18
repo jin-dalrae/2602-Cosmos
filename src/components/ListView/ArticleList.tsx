@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { CosmosPost } from '../../lib/types'
 import { getEmotionColors } from '../shared/EmotionPalette'
+import { formatTimeAgo } from '../../lib/timeFormat'
 
 type SortKey = 'upvotes' | 'emotion' | 'author'
 
@@ -158,6 +159,9 @@ export default function ArticleList({ posts, votes, onVote, onReply }: ArticleLi
                   fontFamily: 'system-ui, sans-serif',
                 }}>
                   {post.author}
+                  {formatTimeAgo(post.created_at) && (
+                    <span style={{ marginLeft: 6, color: '#5A5550' }}>{formatTimeAgo(post.created_at)}</span>
+                  )}
                 </span>
 
                 {/* Chevron */}

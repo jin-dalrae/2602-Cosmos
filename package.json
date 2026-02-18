@@ -8,7 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
-    "start": "PORT=3001 tsx server/index.ts",
+    "start": "tsx server/index.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -24,6 +24,7 @@
     "firebase": "^12.9.0",
     "firebase-admin": "^13.6.1",
     "framer-motion": "^12.34.0",
+    "mongodb": "^7.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",

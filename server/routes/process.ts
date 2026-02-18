@@ -2,11 +2,11 @@
 
 import type { Request, Response } from 'express'
 import { processDiscussion } from '../../src/lib/orchestrator.js'
-import { getCached, setCached } from '../../src/lib/cache.js'
-import type { ProgressEvent } from '../../src/lib/types.js'
+import type { CosmosLayout, ProgressEvent } from '../../src/lib/types.js'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { storeLayoutAndPosts } from '../lib/store.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const CACHE_DIR = join(__dirname, '..', '.cache')
@@ -46,11 +46,11 @@ async function setLocalCache(key: string, layout: unknown) {
 }
 
 export async function processRoute(req: Request, res: Response) {
-  const { url, topic } = req.body
-  const input = url || topic
+  const { topic } = req.body
+  const input = topic
 
   if (!input || typeof input !== 'string') {
-    res.status(400).json({ error: 'Missing url or topic' })
+    res.status(400).json({ error: 'Missing topic' })
     return
   }
 
@@ -71,25 +71,6 @@ export async function processRoute(req: Request, res: Response) {
       sendEvent({ stage: 'COSMOS ready (cached)', percent: 100, layout: localCached })
       res.end()
       return
-    }
-
-    // Check Firestore cache (only for URLs)
-    if (url) {
-      sendEvent({ stage: 'Checking cache...', percent: 2 })
-      const cached = await getCached(url)
-
-      if (cached) {
-        sendEvent({ stage: 'Found cached layout', percent: 50 })
-        sendEvent({
-          stage: 'COSMOS ready (cached)',
-          percent: 100,
-          layout: cached,
-        })
-        // Also save to local file cache for next time
-        setLocalCache(input, cached)
-        res.end()
-        return
-      }
     }
 
     // Run the full pipeline with progress streaming
@@ -114,15 +95,11 @@ export async function processRoute(req: Request, res: Response) {
 
     const layout = await processDiscussion(input, onProgress, onPartialLayout)
 
-    // Cache the result to local file (always)
+    // Cache the result to local file + MongoDB (fire-and-forget)
     setLocalCache(input, layout)
-
-    // Cache to Firestore (fire and forget, only for URLs)
-    if (url) {
-      setCached(url, layout).catch((err) =>
-        console.warn('[Process] Cache write failed:', err)
-      )
-    }
+    storeLayoutAndPosts(input, layout as CosmosLayout).catch((err) =>
+      console.warn('[Process] DB store failed:', err)
+    )
 
     // Send the final layout
     sendEvent({

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { Html } from '@react-three/drei'
 import type { CosmosPost } from '../../lib/types'
 import { getEmotionColors, EDGE_COLORS } from '../shared/EmotionPalette'
+import { formatTimeAgo } from '../../lib/timeFormat'
 
 interface PostCard3DProps {
   post: CosmosPost
@@ -11,6 +12,8 @@ interface PostCard3DProps {
   isAnimatingIn?: boolean // true when this post is flying to sphere
   isHighlighted?: boolean // true when this is a related post to a new AI post
   dimmed?: boolean // true when another card is open
+  ageFade?: number // 0–1, darkens card background for older posts (1 = current, 0.5 = old)
+  zLayer?: number // 0 = front (active layer), 1+ = behind
   articleScale?: number // 0.5–2, scales opened article size
   onSelect: (postId: string) => void
   onDeselect: () => void
@@ -28,10 +31,12 @@ function PostCard3D({
   post,
   isSelected,
   isBrowsed = false,
-  visibility = 1,
+  visibility: _visibility = 1,
   isAnimatingIn = false,
   isHighlighted = false,
   dimmed = false,
+  ageFade = 1,
+  zLayer = 0,
   articleScale = 1,
   onSelect,
   relatedPosts,
@@ -45,6 +50,11 @@ function PostCard3D({
 }: PostCard3DProps) {
   const [hovered, setHovered] = useState(false)
   const colors = getEmotionColors(post.emotion)
+
+  // Age shading: CSS brightness filter (1 = current, lower = older/darker)
+  // When selected, always full brightness
+  const ageFilter = (ageFade >= 1 || isSelected) ? undefined : `brightness(${ageFade})`
+
   const cardRef = useRef<HTMLDivElement>(null)
   const isSelectedRef = useRef(isSelected)
   const onDragWhileSelectedRef = useRef(onDragWhileSelected)
@@ -67,7 +77,7 @@ function PostCard3D({
 
     const onMove = (e: PointerEvent) => {
       if (startX === 0 && startY === 0) return
-      if (!dragging && Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 5) {
+      if (!dragging && Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 3) {
         dragging = true
         card.style.pointerEvents = 'none'
         // Notify parent if this card was selected — collapse it
@@ -120,7 +130,7 @@ function PostCard3D({
         distanceFactor={isSelected ? 75 * articleScale : 50}
         occlude={false}
         style={{ pointerEvents: 'auto', width: isSelected ? 550 : 300 }}
-        zIndexRange={isSelected ? [10000, 10000] : [0, 9999]}
+        zIndexRange={isSelected ? [10000, 10000] : zLayer === 0 ? [5000, 9999] : [0, 4999]}
       >
         <div
           ref={cardRef}
@@ -149,7 +159,7 @@ function PostCard3D({
             color: colors.text,
             fontFamily: 'Georgia, "Times New Roman", serif',
             cursor: 'pointer',
-            opacity: isAnimatingIn ? 1 : isSelected ? 1 : dimmed ? visibility * 0.4 : visibility,
+            opacity: isAnimatingIn ? 1 : isSelected ? 1 : dimmed ? 0.4 : 1,
             transform: isAnimatingIn
               ? 'scale(1.1)'
               : isHighlighted
@@ -159,10 +169,11 @@ function PostCard3D({
                   : isBrowsed
                     ? 'scale(1.02)'
                     : hovered
-                      ? `scale(${0.92 + visibility * 0.1})`
-                      : `scale(${0.85 + visibility * 0.15})`,
+                      ? 'scale(1.02)'
+                      : 'scale(1)',
+            filter: ageFilter,
             animation: isHighlighted ? 'highlightPulse 1s ease-in-out infinite' : undefined,
-            transition: 'transform 0.4s ease, opacity 0.4s ease',
+            transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.15, 1), opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), filter 0.6s ease',
             overflow: 'hidden',
             userSelect: 'none',
             position: 'relative',
@@ -191,6 +202,11 @@ function PostCard3D({
               fontSize: isSelected ? 14 : 11, color: `${colors.text}99`, fontFamily: 'system-ui, sans-serif',
             }}>
               <span style={{ fontWeight: 600 }}>{post.author}</span>
+              {formatTimeAgo(post.created_at) && (
+                <span style={{ fontSize: isSelected ? 12 : 10, color: `${colors.text}55` }}>
+                  {formatTimeAgo(post.created_at)}
+                </span>
+              )}
               <span style={{
                 padding: '2px 8px', borderRadius: 5,
                 backgroundColor: `${colors.accent}18`, fontSize: isSelected ? 13 : 12, color: colors.accent,
@@ -389,6 +405,7 @@ export default memo(PostCard3D, (prev, next) => {
   if (prev.isAnimatingIn !== next.isAnimatingIn) return false
   if (prev.isHighlighted !== next.isHighlighted) return false
   if (prev.dimmed !== next.dimmed) return false
+  if (prev.ageFade !== next.ageFade) return false
   if (prev.articleScale !== next.articleScale) return false
   if (prev.userVote !== next.userVote) return false
   // Quantize visibility — skip re-render for tiny changes

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { CosmosLayout, SwipeEvent, UserPosition, NarratorResponse, GazeTelemetry } from '../../lib/types'
 import { UI_COLORS, BG_DARK, BG_DARKER } from '../shared/EmotionPalette'
+import { API_BASE } from '../../lib/api'
 
 interface NarratorSheetProps {
   layout: CosmosLayout
@@ -51,7 +52,7 @@ export default function NarratorSheet({
       setError(null)
 
       try {
-        const res = await fetch('/api/narrate', {
+        const res = await fetch(`${API_BASE}/api/narrate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
