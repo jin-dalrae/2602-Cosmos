@@ -1,8 +1,10 @@
 import { type ReactNode, useEffect, useRef, useMemo } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { PerspectiveCamera } from '@react-three/drei'
+import { XR, useXR } from '@react-three/xr'
 import type { SceneSettings } from '../ControlPanel'
 import * as THREE from 'three'
+import { xrStore } from '../../lib/xrStore'
 
 /* ── Nebula sky sphere — rainbow hue by direction, nebula wisps ── */
 const nebulaVertexShader = `
@@ -130,6 +132,7 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   gazeSteer?: { dx: number; dy: number } | null
 }) {
   const { camera, gl } = useThree()
+  const xrSession = useXR((s) => s.session)
   const callbackRef = useRef(onOrbitEnd)
   callbackRef.current = onOrbitEnd
   const dragStartRef = useRef(onCanvasDragStart)
@@ -281,6 +284,10 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
 
   // Every frame: update camera rotation (position stays at origin)
   useFrame(() => {
+    // In an XR session the headset drives the camera directly — bail out so we
+    // don't fight the WebXR reference space pose.
+    if (xrSession) return
+
     // Focus animation with ease-out
     if (animating.current) {
       let dTheta = goalRotation.current.theta - rotation.current.theta
@@ -357,10 +364,12 @@ function RotationCamera({ onOrbitEnd, onCameraChange, onCanvasDragStart, onCanva
   return null
 }
 
-/** Dynamically adjusts camera FOV for pinch-zoom */
+/** Dynamically adjusts camera FOV for pinch-zoom. No-op in XR (headset owns projection). */
 function FovZoom({ fov }: { fov: number }) {
   const { camera } = useThree()
+  const xrSession = useXR((s) => s.session)
   useFrame(() => {
+    if (xrSession) return
     const cam = camera as THREE.PerspectiveCamera
     const diff = fov - cam.fov
     if (Math.abs(diff) > 0.1) {
@@ -406,30 +415,32 @@ function WheelHandler({ onTimeScroll, onPinchZoom }: { onTimeScroll?: (delta: nu
 export default function Canvas3D({ children, settings, articleRadius, focusTarget, pendingAutoSelect, gazeSteer, onOrbitEnd, onCameraChange, onCanvasDragStart, onCanvasClick, onTimeScroll, onPinchZoom, fov = 78 }: Canvas3DProps) {
   return (
     <Canvas style={{ background: '#1E1914' }} dpr={[1, 1.5]} performance={{ min: 0.5 }}>
-      <PerspectiveCamera makeDefault fov={fov} position={[0, 0, 0]} />
-      <FovZoom fov={fov} />
-      <RotationCamera
-        onOrbitEnd={onOrbitEnd}
-        onCameraChange={onCameraChange}
-        onCanvasDragStart={onCanvasDragStart}
-        onCanvasClick={onCanvasClick}
-        damping={settings.damping}
-        focusTarget={focusTarget}
-        pendingAutoSelect={pendingAutoSelect}
-        gazeSteer={gazeSteer}
-      />
+      <XR store={xrStore}>
+        <PerspectiveCamera makeDefault fov={fov} position={[0, 0, 0]} />
+        <FovZoom fov={fov} />
+        <RotationCamera
+          onOrbitEnd={onOrbitEnd}
+          onCameraChange={onCameraChange}
+          onCanvasDragStart={onCanvasDragStart}
+          onCanvasClick={onCanvasClick}
+          damping={settings.damping}
+          focusTarget={focusTarget}
+          pendingAutoSelect={pendingAutoSelect}
+          gazeSteer={gazeSteer}
+        />
 
-      <NebulaSky />
+        <NebulaSky />
 
-      <ambientLight intensity={0.7} color="#FFE8D6" />
-      <directionalLight position={[5, 3, 5]} intensity={0.5} color="#FFCBA4" />
-      <directionalLight position={[-3, -2, -4]} intensity={0.15} color="#9B8FB8" />
+        <ambientLight intensity={0.7} color="#FFE8D6" />
+        <directionalLight position={[5, 3, 5]} intensity={0.5} color="#FFCBA4" />
+        <directionalLight position={[-3, -2, -4]} intensity={0.15} color="#9B8FB8" />
 
-      <WheelHandler onTimeScroll={onTimeScroll} onPinchZoom={onPinchZoom} />
+        <WheelHandler onTimeScroll={onTimeScroll} onPinchZoom={onPinchZoom} />
 
-      <ScaledSphere targetRadius={articleRadius}>
-        {children}
-      </ScaledSphere>
+        <ScaledSphere targetRadius={articleRadius}>
+          {children}
+        </ScaledSphere>
+      </XR>
     </Canvas>
   )
 }

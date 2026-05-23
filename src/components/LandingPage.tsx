@@ -322,6 +322,11 @@ export default function LandingPage() {
                   title: 'Friction disappears',
                   body: 'Every click is a micro-decision: "Is this worth my attention?" Browse mode removes that question. You look, and content is there. You don\'t select articles — you wander through them.',
                 },
+                {
+                  accent: C.lavender,
+                  title: 'Works in your headset',
+                  body: 'Same cosmos, real immersion. On Meta Quest or Apple Vision Pro, tap VR and your headset\'s motion drives the camera directly. The sphere becomes the room you\'re standing in.',
+                },
               ].map((pillar, i) => (
                 <Section key={pillar.title} delay={i * 0.1}>
                   <div style={{ display: 'flex', gap: 20 }}>

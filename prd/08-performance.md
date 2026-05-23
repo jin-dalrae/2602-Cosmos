@@ -69,3 +69,11 @@ Mitigations:
 - `src/components/CosmosExperience.tsx` -- culling logic, camera throttle
 - `src/components/MapMode/PostCard3D.tsx` -- memo comparator, CSS perf
 - `src/components/MapMode/Canvas3D.tsx` -- drag threshold, canvas settings
+
+## VR Performance Notes
+
+WebXR sessions render the scene **twice per frame** (once per eye) and target 72--90 Hz on standalone headsets. The visibility cone culling and DOM-card budget tuned for flat mode are roughly OK on Quest 3, but the headroom is thinner. Things to watch:
+
+- The nebula skybox shader runs per eye -- if frame-time becomes a problem, switch to a pre-rendered cubemap.
+- drei `<Html>` cards are rendered as DOM overlays. WebXR composites them into the layer, but each card still costs DOM + layout. Stereoscopic rendering doubles the GPU cost of the WebGL portion but not the DOM portion -- so DOM-heavy frames in VR may be harder to optimize than they look.
+- `dpr={[1, 1.5]}` clamps device pixel ratio in flat mode; in VR, the headset's native resolution overrides this and we don't currently downscale.

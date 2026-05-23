@@ -9,7 +9,8 @@
 | Vite 7 | Build tooling and dev server |
 | @react-three/fiber 9 | React renderer for Three.js |
 | @react-three/drei 10 | Three.js helpers (Html, PerspectiveCamera) |
-| Three.js | 3D rendering engine |
+| @react-three/xr 6 | WebXR session management for VR mode |
+| Three.js | 3D rendering engine (deduped via Vite alias -- XR transitive deps bundle their own copy otherwise) |
 | Framer Motion 12 | Animations and page transitions |
 | Tailwind CSS 4 | Utility styles |
 | MediaPipe FaceLandmarker | Head pose detection (GPU, client-side) |

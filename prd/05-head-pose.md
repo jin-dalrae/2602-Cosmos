@@ -127,6 +127,12 @@ No calibration step between consent and active.
 - Camera preview always visible
 - Toggle on/off anytime
 
+## Relationship to VR Mode
+
+Head-pose navigation is a webcam-based **substitute** for the head tracking a VR headset gives natively. When an `immersive-vr` WebXR session is active, the head-pose pipeline is bypassed -- the headset's reference space pose drives the camera directly (see [02-navigation.md](./02-navigation.md) > VR Mode). MediaPipe doesn't run in VR sessions, and GazeLearner corrections don't apply.
+
+On Quest Pro / Vision Pro, the long-term goal is to replace the head-pose proxy with native eye tracking via the WebXR `eye-tracking` feature (not yet enabled).
+
 ## Key Files
 
 - `src/hooks/useGazeTracking.ts` -- getUserMedia wrapper

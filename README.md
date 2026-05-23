@@ -94,6 +94,7 @@ COSMOS introduces a multi-modal input system that goes beyond point-and-click:
 | **Two-finger scroll** | Rotate through time ordering — rank-based, endless wrapping, fog effect |
 | **Pinch zoom** | Adjust FOV (30°–110°) — go nearer into the space |
 | **Click** | Open an article (optional — auto-open handles this in gaze/drag mode) |
+| **VR (WebXR)** | Enter immersive mode on Quest / Vision Pro — headset pose drives the camera directly. Button auto-hides on devices without WebXR support. |
 
 ### GazeLearner: Self-Calibrating Gaze
 
@@ -153,6 +154,7 @@ cosmos/
 │   │   ├── firebase.ts                    # Firebase SDK + Analytics
 │   │   ├── gazeLearner.ts                 # Passive gaze calibration (WLS regression)
 │   │   ├── orchestrator.ts                # Pipeline coordination + SSE
+│   │   ├── xrStore.ts                     # WebXR session store (singleton)
 │   │   ├── agents/                        # 5 Claude-powered specialist agents
 │   │   ├── api.ts                         # API client
 │   │   └── types.ts                       # Domain model (CosmosPost, CosmosLayout)
@@ -164,10 +166,11 @@ cosmos/
 │   │   ├── LandingPage.tsx                # Marketing page with 3D sphere background
 │   │   ├── ControlPanel.tsx               # Card size, article zoom sliders
 │   │   ├── MapMode/
-│   │   │   ├── Canvas3D.tsx               # Three.js canvas, quaternion camera, FOV zoom
+│   │   │   ├── Canvas3D.tsx               # Three.js canvas, quaternion camera, FOV zoom, WebXR
 │   │   │   ├── PostCard3D.tsx             # 3D cards with emotion colors + transitions
 │   │   │   ├── EdgeNetwork.tsx            # Relationship constellation lines
 │   │   │   └── AmbientDust.tsx            # Atmospheric particle field
+│   │   ├── UI/VRButton.tsx                # WebXR enter/exit toggle (auto-hides if unsupported)
 │   │   ├── ListView/                      # Traditional scrollable article list
 │   │   ├── Admin/                         # Admin dashboard (PIN-protected)
 │   │   ├── UI/                            # Camera consent, face preview, loading
@@ -189,6 +192,7 @@ cosmos/
 | Layer | Technology | Why |
 |-------|-----------|-----|
 | **3D Engine** | Three.js + @react-three/fiber | Declarative 3D in React, GPU-accelerated |
+| **WebXR** | @react-three/xr v6 | Native VR mode — same codebase runs on desktop and headset |
 | **Frontend** | React 19, TypeScript 5.9, Vite 7 | Type-safe, fast builds, modern toolchain |
 | **Animation** | Framer Motion 12 | Smooth page/card transitions |
 | **Head Tracking** | MediaPipe FaceLandmarker | 60fps on-device, zero privacy cost |
@@ -239,8 +243,9 @@ cosmos/
 | Phase | Timeline | What Ships |
 |-------|----------|-----------|
 | **Web App** | **Now (live)** | Full 3D sphere, 5 AI agents, head-pose, GazeLearner, temporal depth, pinch zoom |
+| **VR Mode (basic)** | **Now (live)** | WebXR via @react-three/xr — headset pose drives the camera on Quest / Vision Pro |
 | **Ambient Mode** | Month 3–6 | Auto-rotating display mode for offices, newsrooms, conferences |
-| **VR/AR Native** | Month 6–12 | Quest + Vision Pro — hand tracking, eye tracking, spatial audio |
+| **VR Native (deep)** | Month 6–12 | Hand tracking, eye tracking, spatial audio, controller raycast for card selection |
 | **Enterprise** | Month 12–24 | Team spheres, attention heatmaps, Slack/Teams integration, Analyst API |
 | **Platform** | Month 24+ | Embeddable `<cosmos-sphere>` widget, attention analytics, cross-sphere navigation |
 

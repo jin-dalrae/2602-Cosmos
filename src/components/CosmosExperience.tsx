@@ -11,6 +11,7 @@ import ComposeOverlay from './ComposeOverlay'
 import DetailPanel from './DetailPanel'
 import ControlPanel, { DEFAULT_SETTINGS, type SceneSettings } from './ControlPanel'
 import CameraConsent from './UI/CameraConsent'
+import VRButton from './UI/VRButton'
 import useGazeTracking from '../hooks/useGazeTracking'
 import useHeadPose from '../hooks/useHeadPose'
 import FacePreview from './UI/FacePreview'
@@ -888,6 +889,7 @@ export default function CosmosExperience({ layout, isRefining }: CosmosExperienc
           display: 'flex', gap: 6,
           pointerEvents: 'auto',
         }}>
+          <VRButton />
           <button
             onClick={handleGazeToggle}
             style={{
